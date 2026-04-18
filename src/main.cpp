@@ -5,6 +5,7 @@
 #include "hw_display.h"
 #include "hw_power.h"
 #include "hw_input.h"
+#include "hw_motor.h"
 
 static char btName[16] = "Claude";
 static void startBt() {
@@ -51,6 +52,8 @@ void setup() {
   hw_input_init();
   Serial.println("hw_input: init done");
 
+  hw_motor_init();
+
   startBt();
 }
 
@@ -61,6 +64,7 @@ void loop() {
     lastTick = millis();
     Serial.printf("tick %lus\n", millis()/1000);
   }
+  if (e != EVT_NONE) hw_motor_click(120);
   switch (e) {
     case EVT_ROT_CW:  Serial.println("CW");     break;
     case EVT_ROT_CCW: Serial.println("CCW");    break;
