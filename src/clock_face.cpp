@@ -42,6 +42,97 @@ bool needs_redraw(const struct tm& t, int& cachedMin, int& cachedSec, int& cache
 
 }  // namespace clock_face_internal
 
-// Render stubs — Task 4 replaces these with real paintValid/paintInvalid logic.
+#ifdef ARDUINO
+
+// Private module state
+static bool    _valid      = false;
+static bool    _lastValid  = false;
+static int     _cachedMin  = -1;
+static int     _cachedSec  = -1;
+static int     _cachedDay  = -1;
+
+void clock_face_invalidate() {
+  _cachedMin = -1;
+  _cachedSec = -1;
+  _cachedDay = -1;
+  _lastValid = !_valid;   // Force repaint on next tick regardless of validity
+}
+
+static void paintInvalid() {
+  TFT_eSprite& sp = hw_display_sprite();
+  sp.fillSprite(TFT_BLACK);
+
+  sp.setTextDatum(MC_DATUM);
+  sp.setTextColor(TFT_WHITE, TFT_BLACK);
+  sp.setTextSize(6);
+  sp.drawString("--:--", 120, 80);
+
+  sp.setTextSize(1);
+  sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  sp.drawString("(no time)", 120, 130);
+  sp.drawString("waiting for", 120, 150);
+  sp.drawString("Claude", 120, 160);
+
+  sp.setTextDatum(TL_DATUM);
+  sp.pushSprite(0, 0);
+}
+
+static void paintValid(const struct tm& t) {
+  char hm[6], ss[3], date[16];
+  clock_face_internal::fmt_time_fields(t, hm, ss, date);
+
+  TFT_eSprite& sp = hw_display_sprite();
+  sp.fillSprite(TFT_BLACK);
+
+  sp.setTextDatum(MC_DATUM);
+
+  sp.setTextColor(TFT_WHITE, TFT_BLACK);
+  sp.setTextSize(6);
+  sp.drawString(hm, 120, 70);
+
+  sp.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+  sp.setTextSize(3);
+  sp.drawString(ss, 120, 135);
+
+  sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  sp.setTextSize(2);
+  sp.drawString(date, 120, 180);
+
+  sp.setTextDatum(TL_DATUM);
+  sp.pushSprite(0, 0);
+}
+
+void clock_face_tick() {
+  time_t now;
+  time(&now);
+  _valid = (now >= TIME_SYNCED_MIN_EPOCH);
+
+  // Validity transition forces a full repaint of the new layout.
+  if (_valid != _lastValid) {
+    _lastValid = _valid;
+    _cachedMin = -1; _cachedSec = -1; _cachedDay = -1;
+    if (!_valid) { paintInvalid(); return; }
+    // else fall through to the valid branch below for first paint
+  }
+
+  if (!_valid) {
+    // Static placeholder; already painted on the transition. Nothing else
+    // to do until time syncs.
+    return;
+  }
+
+  struct tm lt;
+  localtime_r(&now, &lt);
+
+  if (clock_face_internal::needs_redraw(lt, _cachedMin, _cachedSec, _cachedDay)) {
+    paintValid(lt);
+  }
+}
+
+#else
+
+// Host-test build: render API is not exercised by tests.
 void clock_face_invalidate() {}
 void clock_face_tick()       {}
+
+#endif
