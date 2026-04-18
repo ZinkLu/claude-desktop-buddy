@@ -137,7 +137,13 @@ void loop() {
     lastPromptId[sizeof(lastPromptId) - 1] = 0;
     responseSent = false;
     approvalChoice = true;
-    if (tama.promptId[0]) promptArrivedMs = now;
+    if (tama.promptId[0]) {
+      promptArrivedMs = now;
+      if (displayMode == DISP_CLOCK) {
+        displayMode = DISP_HOME;
+        buddyInvalidate();   // force home first-frame repaint
+      }
+    }
   }
 
   InputEvent e = hw_input_poll();
