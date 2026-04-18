@@ -1,6 +1,5 @@
 #include "hw_display.h"
 #include <Arduino.h>
-#include <SPI.h>
 
 static TFT_eSPI _tft;
 static TFT_eSprite _spr(&_tft);
@@ -12,11 +11,6 @@ void hw_display_init() {
   ledcSetup(BLK_CH, 5000, 8);
   ledcAttachPin(BLK_PIN, BLK_CH);
   hw_display_set_brightness(0);  // off while init
-
-  // ESP32-S3 quirk: TFT_eSPI 2.5.x does not always init SPI before its first
-  // writecommand() inside init(). Initialize SPI explicitly with the X-Knob
-  // pin map (SCLK=12, MOSI=11, no MISO, CS handled by TFT_eSPI).
-  SPI.begin(12, -1, 11, -1);
 
   _tft.init();
   _tft.setRotation(0);
