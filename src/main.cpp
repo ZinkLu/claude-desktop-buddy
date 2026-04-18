@@ -39,51 +39,28 @@ void setup() {
 }
 
 void loop() {
-  static uint8_t state = 1;  // 1 = idle
+  // Task 7 display-pipeline diagnostic: drop all buddy rendering, just
+  // alternate solid blue and solid red every 500ms. If this doesn't show,
+  // pushSprite itself broke. If it shows, buddy render path is the culprit.
   static uint32_t lastTick = 0;
-  static bool firstFrame = true;
-
-  InputEvent e = hw_input_poll();
-  if (e == EVT_ROT_CW)  { state = (state + 1) % 7; buddyInvalidate(); }
-  if (e == EVT_ROT_CCW) { state = (state + 6) % 7; buddyInvalidate(); }
-  if (e != EVT_NONE)    hw_motor_click(120);
-
-  if (millis() - lastTick >= 1000) {
-    lastTick = millis();
-    Serial.printf("tick %lus state=%u\n", millis()/1000, state);
-  }
-  switch (e) {
-    case EVT_ROT_CW:  Serial.println("CW");     break;
-    case EVT_ROT_CCW: Serial.println("CCW");    break;
-    case EVT_CLICK:   Serial.println("CLICK");  break;
-    case EVT_DOUBLE:  Serial.println("DOUBLE"); break;
-    case EVT_LONG:    Serial.println("LONG");   break;
-    default: break;
-  }
+  static bool onBlue = true;
 
   TFT_eSprite& sp = hw_display_sprite();
 
-  // First frame only: clear full sprite. After that, buddyTick manages its
-  // own canvas region via fillRect inside the renderer — don't fillSprite
-  // every frame or we blank the character between the 5fps animation ticks.
-  if (firstFrame) { sp.fillSprite(TFT_BLACK); firstFrame = false; }
+  if (millis() - lastTick >= 500) {
+    lastTick = millis();
+    onBlue = !onBlue;
+    sp.fillSprite(onBlue ? TFT_BLUE : TFT_RED);
+    sp.pushSprite(0, 0);
+    Serial.printf("diag %s at %lums\n", onBlue ? "BLUE" : "RED", millis());
+  }
 
-  // Task 7 debug marker — 4px red square at top of circle. If this is
-  // invisible, sprite-to-LCD pipeline is dead. If it's visible but no
-  // character, buddy render path is broken. Remove after Phase 1 acceptance.
-  sp.fillRect(116, 28, 8, 8, TFT_RED);
+  // Keep inputs alive so we know the loop runs.
+  InputEvent e = hw_input_poll();
+  if (e != EVT_NONE) {
+    hw_motor_click(120);
+    Serial.printf("input %d\n", (int)e);
+  }
 
-  buddyTick(state);
-
-  // State label — clear just its strip each frame and redraw.
-  static const char* names[] = {"sleep","idle","busy","attention","celebrate","dizzy","heart"};
-  sp.fillRect(60, 198, 120, 14, TFT_BLACK);
-  sp.setTextColor(TFT_WHITE, TFT_BLACK);
-  sp.setTextDatum(MC_DATUM);
-  sp.setTextSize(1);
-  sp.drawString(names[state], 120, 205);
-  sp.setTextDatum(TL_DATUM);
-
-  sp.pushSprite(0, 0);
-  delay(20);
+  delay(5);
 }
