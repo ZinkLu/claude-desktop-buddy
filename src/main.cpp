@@ -25,12 +25,16 @@ void setup() {
 
   hw_display_init();
 
-  // Bisecting which peripheral init kills the display. Round 1: hw_motor.
+  // Round 1 OK: hw_motor. Round 2: + LittleFS + hw_input.
   hw_motor_init();
   Serial.println("DIAG: hw_motor_init done");
 
-  // if (!LittleFS.begin(true)) Serial.println("LittleFS mount failed");
-  // hw_input_init();
+  if (!LittleFS.begin(true)) Serial.println("LittleFS mount failed");
+  Serial.println("DIAG: LittleFS done");
+
+  hw_input_init();
+  Serial.println("DIAG: hw_input_init done");
+
   // buddyInit();
   // buddySetPeek(false);
   // startBt();
