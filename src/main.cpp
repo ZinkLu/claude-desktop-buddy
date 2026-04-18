@@ -33,6 +33,7 @@ void setup() {
 
   hw_motor_init();
   buddyInit();
+  buddySetPeek(false);   // 2× scale (upstream "home" default; we never entered peek mode)
 
   startBt();
 }
@@ -66,6 +67,11 @@ void loop() {
   // own canvas region via fillRect inside the renderer — don't fillSprite
   // every frame or we blank the character between the 5fps animation ticks.
   if (firstFrame) { sp.fillSprite(TFT_BLACK); firstFrame = false; }
+
+  // Task 7 debug marker — 4px red square at top of circle. If this is
+  // invisible, sprite-to-LCD pipeline is dead. If it's visible but no
+  // character, buddy render path is broken. Remove after Phase 1 acceptance.
+  sp.fillRect(116, 28, 8, 8, TFT_RED);
 
   buddyTick(state);
 
