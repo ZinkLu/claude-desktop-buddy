@@ -6,6 +6,7 @@
 #include "hw_power.h"
 #include "hw_input.h"
 #include "hw_motor.h"
+#include "hw_leds.h"
 
 static char btName[16] = "Claude";
 static void startBt() {
@@ -53,6 +54,7 @@ void setup() {
   Serial.println("hw_input: init done");
 
   hw_motor_init();
+  hw_leds_init();
 
   startBt();
 }
@@ -66,12 +68,27 @@ void loop() {
   }
   if (e != EVT_NONE) hw_motor_click(120);
   switch (e) {
-    case EVT_ROT_CW:  Serial.println("CW");     break;
-    case EVT_ROT_CCW: Serial.println("CCW");    break;
-    case EVT_CLICK:   Serial.println("CLICK");  break;
-    case EVT_DOUBLE:  Serial.println("DOUBLE"); break;
-    case EVT_LONG:    Serial.println("LONG");   break;
+    case EVT_ROT_CW:
+      Serial.println("CW");
+      hw_leds_set_mode(LED_ATTENTION_BREATH);
+      break;
+    case EVT_ROT_CCW:
+      Serial.println("CCW");
+      hw_leds_set_mode(LED_OFF);
+      break;
+    case EVT_CLICK:
+      Serial.println("CLICK");
+      hw_leds_set_mode(LED_APPROVE_FLASH);
+      break;
+    case EVT_LONG:
+      Serial.println("LONG");
+      hw_leds_set_mode(LED_DENY_FLASH);
+      break;
+    case EVT_DOUBLE:
+      Serial.println("DOUBLE");
+      break;
     default: break;
   }
+  hw_leds_tick();
   delay(5);
 }
