@@ -1,14 +1,17 @@
 #include "hw_motor.h"
 #include <Arduino.h>
 
-// X-Knob BLDC phases. LEDC channels 1..3 reserved for the motor; channel 0
-// is owned by hw_display for backlight PWM.
+// X-Knob BLDC phases. Arduino-ESP32 binds LEDC channels to timers as
+// timer = channel / 2, so channels 0 and 1 share timer 0. hw_display owns
+// channel 0 (backlight @ 5kHz); if the motor touched channel 1 at 20kHz
+// it would silently reconfigure timer 0 and kill backlight PWM.
+// Use channels 2, 4, 6 — each maps to a distinct timer (1, 2, 3).
 static const int MO1 = 17;
 static const int MO2 = 16;
 static const int MO3 = 15;
-static const int CH1 = 1;
-static const int CH2 = 2;
-static const int CH3 = 3;
+static const int CH1 = 2;
+static const int CH2 = 4;
+static const int CH3 = 6;
 
 static const int PWM_FREQ = 20000;   // Above audible
 static const int PWM_BITS = 8;
