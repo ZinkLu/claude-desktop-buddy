@@ -2,9 +2,9 @@
 #include <LittleFS.h>
 #include "esp_mac.h"
 #include "ble_bridge.h"
+#include "hw_display.h"
 
 static char btName[16] = "Claude";
-
 static void startBt() {
   uint8_t mac[6] = {0};
   esp_read_mac(mac, ESP_MAC_BT);
@@ -12,38 +12,40 @@ static void startBt() {
   bleInit(btName);
 }
 
+static void drawCalibration() {
+  TFT_eSprite& spr = hw_display_sprite();
+  spr.fillSprite(TFT_BLACK);
+
+  // Top-left RED, top-right GREEN, bottom-left BLUE, bottom-right WHITE.
+  spr.fillRect(0,   0,   120, 120, TFT_RED);
+  spr.fillRect(120, 0,   120, 120, TFT_GREEN);
+  spr.fillRect(0,   120, 120, 120, TFT_BLUE);
+  spr.fillRect(120, 120, 120, 120, TFT_WHITE);
+
+  spr.setTextColor(TFT_BLACK);
+  spr.setTextDatum(MC_DATUM);
+  spr.setTextSize(2);
+  spr.drawString("R", 60,  60);
+  spr.drawString("G", 180, 60);
+  spr.drawString("B", 60,  180);
+  spr.drawString("W", 180, 180);
+
+  spr.pushSprite(0, 0);
+}
+
 void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println("xknob-buddy: boot");
 
-  if (!LittleFS.begin(true)) {
-    Serial.println("LittleFS mount failed");
-  }
+  if (!LittleFS.begin(true)) Serial.println("LittleFS mount failed");
+
+  hw_display_init();
+  drawCalibration();
 
   startBt();
-  Serial.printf("advertising as %s\n", btName);
 }
 
 void loop() {
-  static uint32_t lastPasskey = 0;
-  uint32_t pk = blePasskey();
-  if (pk && pk != lastPasskey) {
-    Serial.printf("passkey: %06lu\n", (unsigned long)pk);
-  }
-  lastPasskey = pk;
-
-  static bool wasConn = false;
-  bool conn = bleConnected();
-  if (conn != wasConn) {
-    Serial.printf("ble: %s\n", conn ? "connected" : "disconnected");
-    wasConn = conn;
-  }
-
-  while (bleAvailable()) {
-    int c = bleRead();
-    if (c >= 0) Serial.write((char)c);
-  }
-
-  delay(20);
+  delay(1000);
 }
