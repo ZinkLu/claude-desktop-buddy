@@ -48,6 +48,14 @@ void loop() {
     lastTick = millis();
     Serial.printf("tick %lus state=%u\n", millis()/1000, state);
   }
+  switch (e) {
+    case EVT_ROT_CW:  Serial.println("CW");     break;
+    case EVT_ROT_CCW: Serial.println("CCW");    break;
+    case EVT_CLICK:   Serial.println("CLICK");  break;
+    case EVT_DOUBLE:  Serial.println("DOUBLE"); break;
+    case EVT_LONG:    Serial.println("LONG");   break;
+    default: break;
+  }
 
   TFT_eSprite& sp = hw_display_sprite();
 
