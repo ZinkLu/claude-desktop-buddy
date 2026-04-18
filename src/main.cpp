@@ -25,16 +25,15 @@ void setup() {
 
   hw_display_init();
 
-  // Round 1 OK: hw_motor. Round 2: + LittleFS + hw_input.
+  // Round 1 OK: hw_motor. Round 2 broke: +LittleFS +hw_input.
+  // Round 3: hw_motor + LittleFS only (bisect).
   hw_motor_init();
   Serial.println("DIAG: hw_motor_init done");
 
   if (!LittleFS.begin(true)) Serial.println("LittleFS mount failed");
   Serial.println("DIAG: LittleFS done");
 
-  hw_input_init();
-  Serial.println("DIAG: hw_input_init done");
-
+  // hw_input_init();
   // buddyInit();
   // buddySetPeek(false);
   // startBt();
