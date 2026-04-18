@@ -47,13 +47,20 @@ void setup() {
   hw_display_init();
   drawCalibration();
 
+  Serial.println("hw_input: init start");
   hw_input_init();
+  Serial.println("hw_input: init done");
 
   startBt();
 }
 
 void loop() {
   InputEvent e = hw_input_poll();
+  static uint32_t lastTick = 0;
+  if (millis() - lastTick >= 1000) {
+    lastTick = millis();
+    Serial.printf("tick %lus\n", millis()/1000);
+  }
   switch (e) {
     case EVT_ROT_CW:  Serial.println("CW");     break;
     case EVT_ROT_CCW: Serial.println("CCW");    break;

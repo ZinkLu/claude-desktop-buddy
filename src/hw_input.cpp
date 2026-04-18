@@ -2,7 +2,6 @@
 
 #ifdef ARDUINO
 #include <Arduino.h>
-#include <Wire.h>
 #endif
 
 namespace hw_input_internal {
@@ -95,36 +94,42 @@ InputEvent encoderStep(EncoderFSM& s, float currentDeg) {
 
 #ifdef ARDUINO
 
-static const int BTN_PIN    = 5;
-static const int MT6701_SDA = 1;
-static const int MT6701_SCL = 2;
-static const uint8_t MT6701_ADDR = 0x06;  // 7-bit address
+#include <SPI.h>
 
+static const int BTN_PIN  = 5;
+// MT6701 is SSI/SPI half-duplex (NOT I2C). X-Knob wires it to FSPI (SPI2)
+// because HSPI is already owned by TFT_eSPI (LCD).
+static const int MT6701_SCLK = 2;   // X-Knob config.h misnames this "MT6701_SCL"
+static const int MT6701_MISO = 1;   // X-Knob config.h misnames this "MT6701_SDA"
+static const int MT6701_SS   = 42;
+static const uint32_t MT6701_SPI_HZ = 1000000;  // 1 MHz; MT6701 SSI max 15 MHz, low is safer
+
+static SPIClass _fspi(FSPI);
 static hw_input_internal::ButtonFSM  _btn;
 static hw_input_internal::EncoderFSM _enc;
-
-// MT6701 angle register is 0x03 (high byte) / 0x04 (low 6 bits).
-// Value is 14-bit, 0..16383 over 0..360°.
-static float mt6701_read_deg() {
-  Wire.beginTransmission(MT6701_ADDR);
-  Wire.write(0x03);
-  if (Wire.endTransmission(false) != 0) return NAN;
-  Wire.requestFrom((int)MT6701_ADDR, 2);
-  if (Wire.available() < 2) return NAN;
-  uint8_t hi = Wire.read();
-  uint8_t lo = Wire.read();
-  uint16_t raw = ((uint16_t)hi << 6) | (lo >> 2);   // 14-bit
-  return (raw * 360.0f) / 16384.0f;
-}
-
-// Accumulated degrees across wrap (MT6701 returns 0..360; we want unbounded).
 static float _accDeg = 0.0f;
 static float _lastRawDeg = NAN;
 
+static float mt6701_read_deg() {
+  _fspi.beginTransaction(SPISettings(MT6701_SPI_HZ, MSBFIRST, SPI_MODE1));
+  digitalWrite(MT6701_SS, LOW);
+  uint16_t raw = _fspi.transfer16(0);
+  digitalWrite(MT6701_SS, HIGH);
+  _fspi.endTransaction();
+  // MT6701 SSI returns 14-bit angle in top bits, plus status in bottom 2.
+  uint16_t ag = raw >> 2;
+  return ((float)ag * 360.0f) / 16384.0f;
+}
+
 void hw_input_init() {
+  // Button first so even if SPI init misbehaves, button polling still works.
   pinMode(BTN_PIN, INPUT_PULLUP);
-  Wire.begin(MT6701_SDA, MT6701_SCL, 400000);
-  // Seed
+
+  // FSPI for MT6701 (HSPI is used by TFT_eSPI).
+  pinMode(MT6701_SS, OUTPUT);
+  digitalWrite(MT6701_SS, HIGH);
+  _fspi.begin(MT6701_SCLK, MT6701_MISO, -1, MT6701_SS);
+
   float d = mt6701_read_deg();
   if (!isnan(d)) { _lastRawDeg = d; _accDeg = 0.0f; _enc.lastEmitDeg = 0.0f; }
 }
@@ -132,12 +137,10 @@ void hw_input_init() {
 InputEvent hw_input_poll() {
   uint32_t now = millis();
 
-  // Encoder: read angle, unwrap, pass to FSM. Emit only one event per poll
-  // (caller can call again; the accumulated value sits until consumed).
   float d = mt6701_read_deg();
   if (!isnan(d) && !isnan(_lastRawDeg)) {
     float diff = d - _lastRawDeg;
-    if (diff >  180.0f) diff -= 360.0f;   // wrap-around fix
+    if (diff >  180.0f) diff -= 360.0f;
     if (diff < -180.0f) diff += 360.0f;
     _accDeg += diff;
     _lastRawDeg = d;
@@ -147,7 +150,6 @@ InputEvent hw_input_poll() {
     _lastRawDeg = d;
   }
 
-  // Button (active low on X-Knob)
   bool pressed = (digitalRead(BTN_PIN) == LOW);
   InputEvent be = hw_input_internal::buttonStep(_btn, pressed, now);
   return be;
