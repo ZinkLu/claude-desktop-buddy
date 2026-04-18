@@ -94,41 +94,55 @@ InputEvent encoderStep(EncoderFSM& s, float currentDeg) {
 
 #ifdef ARDUINO
 
-#include <SPI.h>
-
 static const int BTN_PIN  = 5;
-// MT6701 is SSI/SPI half-duplex (NOT I2C). X-Knob wires it to FSPI (SPI2)
-// because HSPI is already owned by TFT_eSPI (LCD).
-static const int MT6701_SCLK = 2;   // X-Knob config.h misnames this "MT6701_SCL"
-static const int MT6701_MISO = 1;   // X-Knob config.h misnames this "MT6701_SDA"
+// MT6701 SSI half-duplex read, bitbanged on three GPIOs. We avoid the
+// Arduino SPIClass abstraction on ESP32-S3 because calling SPIClass(FSPI).begin()
+// on this SDK clobbers TFT_eSPI's HSPI state and silently kills the LCD.
+// Clocking ~1 MHz in software is plenty — MT6701 supports up to 15 MHz SSI.
+static const int MT6701_SCLK = 2;
+static const int MT6701_MISO = 1;
 static const int MT6701_SS   = 42;
-static const uint32_t MT6701_SPI_HZ = 1000000;  // 1 MHz; MT6701 SSI max 15 MHz, low is safer
 
-static SPIClass _fspi(FSPI);
 static hw_input_internal::ButtonFSM  _btn;
 static hw_input_internal::EncoderFSM _enc;
 static float _accDeg = 0.0f;
 static float _lastRawDeg = NAN;
 
+// Bitbang one bit pulse. ~1 µs half-period ≈ 500 kHz clock.
+static inline void clk_pulse() {
+  digitalWrite(MT6701_SCLK, HIGH);
+  delayMicroseconds(1);
+  digitalWrite(MT6701_SCLK, LOW);
+  delayMicroseconds(1);
+}
+
+// Read 16 SSI bits MSB-first. MT6701 latches data on SCLK falling edge; we
+// sample MISO just before pulling CLK high (= after CLK went low last time).
 static float mt6701_read_deg() {
-  _fspi.beginTransaction(SPISettings(MT6701_SPI_HZ, MSBFIRST, SPI_MODE1));
+  digitalWrite(MT6701_SCLK, LOW);
   digitalWrite(MT6701_SS, LOW);
-  uint16_t raw = _fspi.transfer16(0);
+  delayMicroseconds(1);
+  uint16_t raw = 0;
+  for (int i = 0; i < 16; i++) {
+    digitalWrite(MT6701_SCLK, HIGH);
+    delayMicroseconds(1);
+    raw = (raw << 1) | (digitalRead(MT6701_MISO) ? 1 : 0);
+    digitalWrite(MT6701_SCLK, LOW);
+    delayMicroseconds(1);
+  }
   digitalWrite(MT6701_SS, HIGH);
-  _fspi.endTransaction();
-  // MT6701 SSI returns 14-bit angle in top bits, plus status in bottom 2.
+  // MT6701 SSI returns 14-bit angle in top bits, bottom 2 bits are status.
   uint16_t ag = raw >> 2;
   return ((float)ag * 360.0f) / 16384.0f;
 }
 
 void hw_input_init() {
-  // Button first so even if SPI init misbehaves, button polling still works.
   pinMode(BTN_PIN, INPUT_PULLUP);
-
-  // FSPI for MT6701 (HSPI is used by TFT_eSPI).
-  pinMode(MT6701_SS, OUTPUT);
-  digitalWrite(MT6701_SS, HIGH);
-  _fspi.begin(MT6701_SCLK, MT6701_MISO, -1, MT6701_SS);
+  pinMode(MT6701_SCLK, OUTPUT);
+  pinMode(MT6701_MISO, INPUT);
+  pinMode(MT6701_SS,   OUTPUT);
+  digitalWrite(MT6701_SCLK, LOW);
+  digitalWrite(MT6701_SS,   HIGH);
 
   float d = mt6701_read_deg();
   if (!isnan(d)) { _lastRawDeg = d; _accDeg = 0.0f; _enc.lastEmitDeg = 0.0f; }
