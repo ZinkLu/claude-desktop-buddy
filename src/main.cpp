@@ -21,41 +21,54 @@ void setup() {
 
   Serial.begin(115200);
   delay(500);
-  Serial.println("xknob-buddy: boot (DIAG minimal)");
-
-  hw_display_init();
-
-  hw_motor_init();
-  Serial.println("DIAG: hw_motor_init done");
+  Serial.println("xknob-buddy: boot");
 
   if (!LittleFS.begin(true)) Serial.println("LittleFS mount failed");
-  Serial.println("DIAG: LittleFS done");
 
-  // hw_input rewritten to bitbang; should no longer clobber HSPI.
+  hw_display_init();
   hw_input_init();
-  Serial.println("DIAG: hw_input_init done (bitbang)");
+  hw_motor_init();
+  buddyInit();
+  buddySetPeek(false);   // 2× scale (upstream "home" default)
 
-  // buddyInit();
-  // buddySetPeek(false);
-  // startBt();
+  startBt();
 }
 
 void loop() {
-  // Task 7 display-pipeline diagnostic: drop all buddy rendering, just
-  // alternate solid blue and solid red every 500ms. If this doesn't show,
-  // pushSprite itself broke. If it shows, buddy render path is the culprit.
+  static uint8_t state = 1;  // 1 = idle
   static uint32_t lastTick = 0;
-  static bool onBlue = true;
+  static bool firstFrame = true;
+
+  InputEvent e = hw_input_poll();
+  if (e == EVT_ROT_CW)  { state = (state + 1) % 7; buddyInvalidate(); }
+  if (e == EVT_ROT_CCW) { state = (state + 6) % 7; buddyInvalidate(); }
+  if (e != EVT_NONE)    hw_motor_click(120);
+
+  if (millis() - lastTick >= 1000) {
+    lastTick = millis();
+    Serial.printf("tick %lus state=%u\n", millis()/1000, state);
+  }
 
   TFT_eSprite& sp = hw_display_sprite();
 
-  if (millis() - lastTick >= 500) {
-    lastTick = millis();
-    onBlue = !onBlue;
-    sp.fillSprite(onBlue ? TFT_BLUE : TFT_RED);
-    sp.pushSprite(0, 0);
-    Serial.printf("diag %s at %lums\n", onBlue ? "BLUE" : "RED", millis());
-  }
+  // First frame: clear whole sprite. After that, buddyTick's internal
+  // fillRect manages the character canvas and the label redraw clears
+  // its strip. fillSprite every frame would race against buddy's 5fps
+  // gate and leave the screen black between animation ticks.
+  if (firstFrame) { sp.fillSprite(TFT_BLACK); firstFrame = false; }
 
-  delay(5);
+  buddyTick(state);
+
+  // Status label strip at the bottom of the circle (y≈205 is the lower
+  // bound of usable width on 240×240).
+  static const char* names[] = {"sleep","idle","busy","attention","celebrate","dizzy","heart"};
+  sp.fillRect(60, 198, 120, 14, TFT_BLACK);
+  sp.setTextColor(TFT_WHITE, TFT_BLACK);
+  sp.setTextDatum(MC_DATUM);
+  sp.setTextSize(1);
+  sp.drawString(names[state], 120, 205);
+  sp.setTextDatum(TL_DATUM);
+
+  sp.pushSprite(0, 0);
+  delay(20);
 }
