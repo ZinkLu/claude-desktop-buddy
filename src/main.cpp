@@ -30,6 +30,10 @@ static uint32_t promptArrivedMs = 0;
 bool buddyMode = true;          // true=ASCII species, false=GIF character pack
 bool gifAvailable = false;
 
+// Bridge for hw_motor.cpp — stats.h is header-only with file-scope static
+// state, so hw_motor.cpp can't include it without getting its own copy.
+uint8_t current_haptic_level() { return settings().haptic; }
+
 static void startBt() {
   uint8_t mac[6] = {0};
   esp_read_mac(mac, ESP_MAC_BT);
@@ -147,7 +151,7 @@ void loop() {
   }
 
   InputEvent e = hw_input_poll();
-  if (e != EVT_NONE) hw_motor_click(120);
+  if (e != EVT_NONE) hw_motor_click_default();
 
   if (inPrompt) {
     switch (e) {
