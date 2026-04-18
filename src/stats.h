@@ -182,10 +182,12 @@ struct Settings {
   bool wifi;     // placeholder — no WiFi stack linked yet, just stores the pref
   bool led;
   bool hud;
-  uint8_t clockRot;  // 0=auto 1=portrait 2=landscape
+  uint8_t clockRot;  // 0=auto 1=portrait 2=landscape (unused on X-Knob)
+  uint8_t brightness;  // 0..4 → 20%..100% backlight PWM
+  uint8_t haptic;      // 0..4 → motor bump strength (0 = off)
 };
 
-static Settings _settings = { true, true, false, true, true, 0 };
+static Settings _settings = { true, true, false, true, true, 0, 3, 3 };
 
 inline void settingsLoad() {
   _prefs.begin("buddy", true);
@@ -196,6 +198,10 @@ inline void settingsLoad() {
   _settings.hud      = _prefs.getBool("s_hud", true);
   _settings.clockRot = _prefs.getUChar("s_crot", 0);
   if (_settings.clockRot > 2) _settings.clockRot = 0;
+  _settings.brightness = _prefs.getUChar("s_bright", 3);
+  if (_settings.brightness > 4) _settings.brightness = 3;
+  _settings.haptic     = _prefs.getUChar("s_haptic", 3);
+  if (_settings.haptic > 4) _settings.haptic = 3;
   _prefs.end();
 }
 
@@ -207,6 +213,8 @@ inline void settingsSave() {
   _prefs.putBool("s_led", _settings.led);
   _prefs.putBool("s_hud", _settings.hud);
   _prefs.putUChar("s_crot", _settings.clockRot);
+  _prefs.putUChar("s_bright", _settings.brightness);
+  _prefs.putUChar("s_haptic", _settings.haptic);
   _prefs.end();
 }
 
