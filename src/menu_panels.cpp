@@ -1,11 +1,16 @@
 #include "menu_panels.h"
 #include <Arduino.h>
-#include <LittleFS.h>
 #include "hw_display.h"
 #include "ble_bridge.h"
 #include "input_fsm.h"
-#include "stats.h"
-#include "data.h"
+
+// Bridges to main.cpp — stats.h and data.h are header-only with file-scope
+// static state; including them here would give us our own never-updated
+// copies. main.cpp owns the live state and exports these accessors.
+extern uint8_t panel_brightness();
+extern uint8_t panel_haptic();
+extern bool    panel_transcript_on();
+extern bool    panel_data_demo();
 
 // --- Palette -------------------------------------------------------------
 // Use fixed values; the buddy character palette is not wired through yet.
@@ -59,7 +64,7 @@ void draw_main_menu() {
   int y = 70;
   for (uint8_t i = 0; i < 7; i++) {
     const char* val = nullptr;
-    if (i == 5) val = dataDemo() ? "on" : "off";
+    if (i == 5) val = panel_data_demo() ? "on" : "off";
     _draw_item(y, v.menuSel == i, LABELS[i], val);
     y += 16;
   }
@@ -71,7 +76,6 @@ void draw_main_menu() {
 void draw_settings() {
   _panel_title("Settings", TEXT);
   const FsmView& v = input_fsm_view();
-  Settings& s = settings();
   static const char* LABELS[5] = {
     "brightness", "haptic", "transcript", "reset", "back"
   };
@@ -79,9 +83,9 @@ void draw_settings() {
   int y = 70;
   for (uint8_t i = 0; i < 5; i++) {
     const char* val = nullptr;
-    if (i == 0) { snprintf(buf, sizeof(buf), "%u", s.brightness); val = buf; }
-    else if (i == 1) { snprintf(buf, sizeof(buf), "%u", s.haptic); val = buf; }
-    else if (i == 2) val = s.hud ? "on" : "off";
+    if (i == 0) { snprintf(buf, sizeof(buf), "%u", panel_brightness()); val = buf; }
+    else if (i == 1) { snprintf(buf, sizeof(buf), "%u", panel_haptic());     val = buf; }
+    else if (i == 2) val = panel_transcript_on() ? "on" : "off";
     _draw_item(y, v.settingsSel == i, LABELS[i], val);
     y += 16;
   }
