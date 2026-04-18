@@ -40,10 +40,11 @@ void setup() {
 void loop() {
   static uint8_t state = 1;  // 1 = idle
   static uint32_t lastTick = 0;
+  static bool firstFrame = true;
 
   InputEvent e = hw_input_poll();
-  if (e == EVT_ROT_CW)  state = (state + 1) % 7;
-  if (e == EVT_ROT_CCW) state = (state + 6) % 7;
+  if (e == EVT_ROT_CW)  { state = (state + 1) % 7; buddyInvalidate(); }
+  if (e == EVT_ROT_CCW) { state = (state + 6) % 7; buddyInvalidate(); }
   if (e != EVT_NONE)    hw_motor_click(120);
 
   if (millis() - lastTick >= 1000) {
@@ -60,10 +61,17 @@ void loop() {
   }
 
   TFT_eSprite& sp = hw_display_sprite();
-  sp.fillSprite(TFT_BLACK);
+
+  // First frame only: clear full sprite. After that, buddyTick manages its
+  // own canvas region via fillRect inside the renderer — don't fillSprite
+  // every frame or we blank the character between the 5fps animation ticks.
+  if (firstFrame) { sp.fillSprite(TFT_BLACK); firstFrame = false; }
+
   buddyTick(state);
 
+  // State label — clear just its strip each frame and redraw.
   static const char* names[] = {"sleep","idle","busy","attention","celebrate","dizzy","heart"};
+  sp.fillRect(60, 198, 120, 14, TFT_BLACK);
   sp.setTextColor(TFT_WHITE, TFT_BLACK);
   sp.setTextDatum(MC_DATUM);
   sp.setTextSize(1);
