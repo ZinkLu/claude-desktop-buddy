@@ -6,6 +6,7 @@
 #include "hw_power.h"
 #include "hw_input.h"
 #include "hw_motor.h"
+#include "buddy.h"
 
 static char btName[16] = "Claude";
 static void startBt() {
@@ -13,27 +14,6 @@ static void startBt() {
   esp_read_mac(mac, ESP_MAC_BT);
   snprintf(btName, sizeof(btName), "Claude-%02X%02X", mac[4], mac[5]);
   bleInit(btName);
-}
-
-static void drawCalibration() {
-  TFT_eSprite& spr = hw_display_sprite();
-  spr.fillSprite(TFT_BLACK);
-
-  // Top-left RED, top-right GREEN, bottom-left BLUE, bottom-right WHITE.
-  spr.fillRect(0,   0,   120, 120, TFT_RED);
-  spr.fillRect(120, 0,   120, 120, TFT_GREEN);
-  spr.fillRect(0,   120, 120, 120, TFT_BLUE);
-  spr.fillRect(120, 120, 120, 120, TFT_WHITE);
-
-  spr.setTextColor(TFT_BLACK);
-  spr.setTextDatum(MC_DATUM);
-  spr.setTextSize(2);
-  spr.drawString("R", 60,  60);
-  spr.drawString("G", 180, 60);
-  spr.drawString("B", 60,  180);
-  spr.drawString("W", 180, 180);
-
-  spr.pushSprite(0, 0);
 }
 
 void setup() {
@@ -46,25 +26,30 @@ void setup() {
   if (!LittleFS.begin(true)) Serial.println("LittleFS mount failed");
 
   hw_display_init();
-  drawCalibration();
 
   Serial.println("hw_input: init start");
   hw_input_init();
   Serial.println("hw_input: init done");
 
   hw_motor_init();
+  buddyInit();
 
   startBt();
 }
 
 void loop() {
-  InputEvent e = hw_input_poll();
+  static uint8_t state = 1;  // 1 = idle
   static uint32_t lastTick = 0;
+
+  InputEvent e = hw_input_poll();
+  if (e == EVT_ROT_CW)  state = (state + 1) % 7;
+  if (e == EVT_ROT_CCW) state = (state + 6) % 7;
+  if (e != EVT_NONE)    hw_motor_click(120);
+
   if (millis() - lastTick >= 1000) {
     lastTick = millis();
-    Serial.printf("tick %lus\n", millis()/1000);
+    Serial.printf("tick %lus state=%u\n", millis()/1000, state);
   }
-  if (e != EVT_NONE) hw_motor_click(120);
   switch (e) {
     case EVT_ROT_CW:  Serial.println("CW");     break;
     case EVT_ROT_CCW: Serial.println("CCW");    break;
@@ -73,5 +58,18 @@ void loop() {
     case EVT_LONG:    Serial.println("LONG");   break;
     default: break;
   }
-  delay(5);
+
+  TFT_eSprite& sp = hw_display_sprite();
+  sp.fillSprite(TFT_BLACK);
+  buddyTick(state);
+
+  static const char* names[] = {"sleep","idle","busy","attention","celebrate","dizzy","heart"};
+  sp.setTextColor(TFT_WHITE, TFT_BLACK);
+  sp.setTextDatum(MC_DATUM);
+  sp.setTextSize(1);
+  sp.drawString(names[state], 120, 205);
+  sp.setTextDatum(TL_DATUM);
+
+  sp.pushSprite(0, 0);
+  delay(20);
 }

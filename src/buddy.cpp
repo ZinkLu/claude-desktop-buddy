@@ -1,18 +1,22 @@
 #include "buddy.h"
 #include "buddy_common.h"
-#include <M5StickCPlus.h>
 #include <string.h>
+#include "hw_display.h"
 
-extern TFT_eSprite spr;
+// Phase 1 redirect: upstream's extern sprite is replaced by the one owned
+// by hw_display. Macro (not reference) so the getter inlines at every call
+// site; &spr still works because the getter returns a reference.
+#define spr (hw_display_sprite())
 
 // Mirrors PersonaState in main.cpp
 enum { B_SLEEP, B_IDLE, B_BUSY, B_ATTENTION, B_CELEBRATE, B_DIZZY, B_HEART };
 
 // ──────────────── shared geometry ────────────────
-const int BUDDY_X_CENTER = 67;
-const int BUDDY_CANVAS_W = 135;
-const int BUDDY_Y_BASE   = 30;
-const int BUDDY_Y_OVERLAY = 6;
+// Adapted for X-Knob 240×240 round LCD (Phase 1).
+const int BUDDY_X_CENTER = 120;
+const int BUDDY_CANVAS_W = 240;
+const int BUDDY_Y_BASE   = 70;
+const int BUDDY_Y_OVERLAY = 46;
 const int BUDDY_CHAR_W   = 6;
 const int BUDDY_CHAR_H   = 8;
 
@@ -69,31 +73,12 @@ void buddySetColor(uint16_t fg)   { _tgt->setTextColor(fg, BUDDY_BG); }
 void buddyPrint(const char* s)    { _tgt->setTextSize(_scale); _tgt->print(s); }
 
 // ──────────────── species registry ────────────────
+// Phase 1: capybara only. The 17 other species files remain on disk but
+// out of build_src_filter; Phase 2 re-enables them.
 extern const Species CAPYBARA_SPECIES;
-extern const Species DUCK_SPECIES;
-extern const Species GOOSE_SPECIES;
-extern const Species BLOB_SPECIES;
-extern const Species CAT_SPECIES;
-extern const Species DRAGON_SPECIES;
-extern const Species OCTOPUS_SPECIES;
-extern const Species OWL_SPECIES;
-extern const Species PENGUIN_SPECIES;
-extern const Species TURTLE_SPECIES;
-extern const Species SNAIL_SPECIES;
-extern const Species GHOST_SPECIES;
-extern const Species AXOLOTL_SPECIES;
-extern const Species CACTUS_SPECIES;
-extern const Species ROBOT_SPECIES;
-extern const Species RABBIT_SPECIES;
-extern const Species MUSHROOM_SPECIES;
-extern const Species CHONK_SPECIES;
 
 static const Species* SPECIES_TABLE[] = {
-  &CAPYBARA_SPECIES, &DUCK_SPECIES, &GOOSE_SPECIES, &BLOB_SPECIES,
-  &CAT_SPECIES, &DRAGON_SPECIES, &OCTOPUS_SPECIES, &OWL_SPECIES,
-  &PENGUIN_SPECIES, &TURTLE_SPECIES, &SNAIL_SPECIES, &GHOST_SPECIES,
-  &AXOLOTL_SPECIES, &CACTUS_SPECIES, &ROBOT_SPECIES, &RABBIT_SPECIES,
-  &MUSHROOM_SPECIES, &CHONK_SPECIES,
+  &CAPYBARA_SPECIES,
 };
 static const uint8_t N_SPECIES = sizeof(SPECIES_TABLE) / sizeof(SPECIES_TABLE[0]);
 static uint8_t currentSpeciesIdx = 0;
@@ -103,7 +88,10 @@ static uint32_t tickCount  = 0;
 static uint32_t nextTickAt = 0;
 static const uint32_t TICK_MS = 200;
 
-#include "stats.h"
+// Phase 1: no NVS persistence yet (stats.cpp not linked). Always boot on
+// species 0 (capybara). Task 8 will port stats and restore real load/save.
+static uint8_t speciesIdxLoad() { return 0; }
+static void    speciesIdxSave(uint8_t) {}
 
 void buddyInit() {
   tickCount = 0;
