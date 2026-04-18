@@ -3,6 +3,7 @@
 #include "esp_mac.h"
 #include "ble_bridge.h"
 #include "hw_display.h"
+#include "hw_power.h"
 
 static char btName[16] = "Claude";
 static void startBt() {
@@ -34,6 +35,8 @@ static void drawCalibration() {
 }
 
 void setup() {
+  hw_power_init();                 // First: hold main power rail
+
   Serial.begin(115200);
   delay(500);
   Serial.println("xknob-buddy: boot");
