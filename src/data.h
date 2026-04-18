@@ -72,19 +72,14 @@ static void _applyJson(const char* line, TamaState* out) {
   if (deserializeJson(doc, line)) return;
   if (xferCommand(doc)) { _lastLiveMs = millis(); return; }
 
-  // Bridge sends {"time":[epoch_sec, tz_offset_sec]}; gmtime_r on the
-  // adjusted epoch yields local components including weekday.
+  // Bridge sends {"time":[epoch_sec, tz_offset_sec]}. X-Knob has no external
+  // RTC chip; set the ESP32 internal RTC via settimeofday. The tz offset is
+  // folded into the epoch so gmtime_r on time() returns local components.
   JsonArray t = doc["time"];
   if (!t.isNull() && t.size() == 2) {
     time_t local = (time_t)t[0].as<uint32_t>() + (int32_t)t[1];
-    struct tm lt; gmtime_r(&local, &lt);
-    RTC_TimeTypeDef tm = { (uint8_t)lt.tm_hour, (uint8_t)lt.tm_min, (uint8_t)lt.tm_sec };
-    RTC_DateTypeDef dt = { (uint8_t)lt.tm_wday, (uint8_t)(lt.tm_mon + 1),
-                           (uint8_t)lt.tm_mday, (uint16_t)(lt.tm_year + 1900) };
-    M5.Rtc.SetTime(&tm);
-    M5.Rtc.SetDate(&dt);
-    extern uint32_t _clkLastRead;
-    _clkLastRead = 0;   // force re-read so _clkDt and _rtcValid agree
+    struct timeval tv = { local, 0 };
+    settimeofday(&tv, nullptr);
     _rtcValid = true;
     _lastLiveMs = millis();
     return;
