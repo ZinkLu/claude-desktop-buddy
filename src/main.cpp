@@ -25,11 +25,12 @@ void setup() {
 
   hw_display_init();
 
-  // Everything else disabled for this diag build. Bringing them back one
-  // at a time will isolate which init actually clobbers the display.
+  // Bisecting which peripheral init kills the display. Round 1: hw_motor.
+  hw_motor_init();
+  Serial.println("DIAG: hw_motor_init done");
+
   // if (!LittleFS.begin(true)) Serial.println("LittleFS mount failed");
   // hw_input_init();
-  // hw_motor_init();
   // buddyInit();
   // buddySetPeek(false);
   // startBt();
