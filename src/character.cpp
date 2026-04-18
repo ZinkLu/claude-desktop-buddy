@@ -1,10 +1,11 @@
 #include "character.h"
-#include <M5StickCPlus.h>
 #include <LittleFS.h>
 #include <AnimatedGIF.h>
 #include <ArduinoJson.h>
+#include "hw_display.h"
 
-extern TFT_eSprite spr;
+// Phase 1: the upstream extern sprite is owned by hw_display on this port.
+#define spr (hw_display_sprite())
 
 static const char* STATE_NAMES[] = {
   "sleep", "idle", "busy", "attention", "celebrate", "dizzy", "heart"
