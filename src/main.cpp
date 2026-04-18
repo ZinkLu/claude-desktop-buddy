@@ -17,25 +17,22 @@ static void startBt() {
 }
 
 void setup() {
-  hw_power_init();                 // First: hold main power rail
+  hw_power_init();
 
   Serial.begin(115200);
   delay(500);
-  Serial.println("xknob-buddy: boot");
-
-  if (!LittleFS.begin(true)) Serial.println("LittleFS mount failed");
+  Serial.println("xknob-buddy: boot (DIAG minimal)");
 
   hw_display_init();
 
-  Serial.println("hw_input: init start");
-  hw_input_init();
-  Serial.println("hw_input: init done");
-
-  hw_motor_init();
-  buddyInit();
-  buddySetPeek(false);   // 2× scale (upstream "home" default; we never entered peek mode)
-
-  startBt();
+  // Everything else disabled for this diag build. Bringing them back one
+  // at a time will isolate which init actually clobbers the display.
+  // if (!LittleFS.begin(true)) Serial.println("LittleFS mount failed");
+  // hw_input_init();
+  // hw_motor_init();
+  // buddyInit();
+  // buddySetPeek(false);
+  // startBt();
 }
 
 void loop() {
@@ -53,13 +50,6 @@ void loop() {
     sp.fillSprite(onBlue ? TFT_BLUE : TFT_RED);
     sp.pushSprite(0, 0);
     Serial.printf("diag %s at %lums\n", onBlue ? "BLUE" : "RED", millis());
-  }
-
-  // Keep inputs alive so we know the loop runs.
-  InputEvent e = hw_input_poll();
-  if (e != EVT_NONE) {
-    hw_motor_click(120);
-    Serial.printf("input %d\n", (int)e);
   }
 
   delay(5);
