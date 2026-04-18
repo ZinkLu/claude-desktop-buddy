@@ -4,6 +4,7 @@
 #include "ble_bridge.h"
 #include "hw_display.h"
 #include "hw_power.h"
+#include "hw_input.h"
 
 static char btName[16] = "Claude";
 static void startBt() {
@@ -46,9 +47,20 @@ void setup() {
   hw_display_init();
   drawCalibration();
 
+  hw_input_init();
+
   startBt();
 }
 
 void loop() {
-  delay(1000);
+  InputEvent e = hw_input_poll();
+  switch (e) {
+    case EVT_ROT_CW:  Serial.println("CW");     break;
+    case EVT_ROT_CCW: Serial.println("CCW");    break;
+    case EVT_CLICK:   Serial.println("CLICK");  break;
+    case EVT_DOUBLE:  Serial.println("DOUBLE"); break;
+    case EVT_LONG:    Serial.println("LONG");   break;
+    default: break;
+  }
+  delay(5);
 }
