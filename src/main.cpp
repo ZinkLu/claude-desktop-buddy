@@ -7,11 +7,16 @@
 #include "hw_input.h"
 #include "hw_motor.h"
 #include "buddy.h"
+#include "clock_face.h"
 #include "character.h"
 #include "data.h"          // header-only; include once
 #include "stats.h"         // header-only; include once
 
 enum PersonaState { P_SLEEP, P_IDLE, P_BUSY, P_ATTENTION, P_CELEBRATE, P_DIZZY, P_HEART };
+
+// Phase 2-C: home ↔ clock toggle via LONG press.
+enum DisplayMode { DISP_HOME, DISP_CLOCK };
+static DisplayMode displayMode = DISP_HOME;
 
 static char btName[16] = "Claude";
 static TamaState tama{};
@@ -161,9 +166,23 @@ void loop() {
       }
       default: break;
     }
+  } else {
+    // Non-prompt input (free exploration) — currently no-op; Task 8+ could
+    // wire rotation to GIF/species cycling or menu.
+    switch (e) {
+      case EVT_LONG:
+        Serial.println("LONG");
+        if (displayMode == DISP_HOME) {
+          displayMode = DISP_CLOCK;
+          clock_face_invalidate();
+        } else {
+          displayMode = DISP_HOME;
+          buddyInvalidate();
+        }
+        break;
+      default: break;
+    }
   }
-  // Non-prompt input (free exploration) — currently no-op; Task 8+ could
-  // wire rotation to GIF/species cycling or menu.
 
   if (now - lastHeartbeat >= 5000) {
     lastHeartbeat = now;
@@ -176,22 +195,26 @@ void loop() {
   TFT_eSprite& sp = hw_display_sprite();
   if (firstFrame) { sp.fillSprite(TFT_BLACK); firstFrame = false; }
 
-  if (buddyMode) {
-    buddyTick((uint8_t)activeState);
-  } else if (characterLoaded()) {
-    characterSetState((uint8_t)activeState);
-    characterTick();
+  if (displayMode == DISP_CLOCK) {
+    clock_face_tick();
   } else {
-    // defensive: no renderer available
-    sp.setTextDatum(MC_DATUM);
-    sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    sp.drawString("no character", 120, 120);
-    sp.setTextDatum(TL_DATUM);
+    if (buddyMode) {
+      buddyTick((uint8_t)activeState);
+    } else if (characterLoaded()) {
+      characterSetState((uint8_t)activeState);
+      characterTick();
+    } else {
+      // defensive: no renderer available
+      sp.setTextDatum(MC_DATUM);
+      sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
+      sp.drawString("no character", 120, 120);
+      sp.setTextDatum(TL_DATUM);
+    }
+
+    if (inPrompt) drawApproval();
+    else          drawHudSimple();
+
+    sp.pushSprite(0, 0);
   }
-
-  if (inPrompt) drawApproval();
-  else          drawHudSimple();
-
-  sp.pushSprite(0, 0);
   delay(20);
 }
