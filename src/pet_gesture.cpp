@@ -9,9 +9,8 @@ struct Event {
 };
 
 // Tickle: a burst of same-direction events. Picks up "spinning the knob".
-// 4 events in 400 ms = ~10 Hz — a normal quick flick is enough.
-static const uint32_t TICKLE_WINDOW_MS       = 400;
-static const uint8_t  TICKLE_MIN_EVENTS      = 4;
+static const uint32_t TICKLE_WINDOW_MS       = 250;
+static const uint8_t  TICKLE_MIN_EVENTS      = 5;
 static const uint32_t TICKLE_COOLDOWN_MS     = 500;
 
 Event    _buf[pet_gesture_internal::BUF_SZ];
