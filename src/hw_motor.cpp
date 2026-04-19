@@ -43,3 +43,18 @@ void hw_motor_off() {
   ledcWrite(CH2, 0);
   ledcWrite(CH3, 0);
 }
+
+// Haptic level 0..4 maps to motor strength. Level 0 skips the click entirely.
+static const uint8_t HAPTIC_STRENGTH[5] = { 0, 40, 80, 120, 200 };
+
+// stats.h uses a file-scope static _settings, so including it from this TU
+// would give us a second private copy that never sees settings menu updates.
+// main.cpp owns the live copy and exposes it via this extern function.
+extern uint8_t current_haptic_level();
+
+void hw_motor_click_default() {
+  uint8_t level = current_haptic_level();
+  if (level > 4) level = 3;
+  if (level == 0) return;
+  hw_motor_click(HAPTIC_STRENGTH[level]);
+}
