@@ -38,12 +38,10 @@ void draw_pet_main(uint8_t personaState, bool showHint) {
   TFT_eSprite& sp = hw_display_sprite();
   sp.fillSprite(BG);
 
-  // Character — reuse buddy renderer. Scale stays at peek=false (2x home size).
-  // The buddy tick call must be driven by main.cpp; we only draw the sprite
-  // state after the tick has run. But since draw_pet_main is called AFTER
-  // buddyTick in the main loop, the sprite already has the character painted
-  // for DISP_HOME's typical y=BUDDY_Y_BASE=55 area. That works for pet too.
-
+  // Force buddy to repaint its canvas every frame. Its internal 5fps tick
+  // gate would otherwise early-return and leave the sprite all black
+  // between ticks (same bug Phase 1 Task 7 fixed for home).
+  buddyInvalidate();
   buddyTick(personaState);
 
   // Hint at top (fades out via showHint from main).
@@ -73,56 +71,45 @@ void draw_pet_main(uint8_t personaState, bool showHint) {
 void draw_pet_stats() {
   TFT_eSprite& sp = hw_display_sprite();
   sp.fillSprite(BG);
-  sp.setTextDatum(TL_DATUM);
-  sp.setTextSize(1);
+  sp.setTextDatum(MC_DATUM);
 
-  int y = 40;
-  // mood
-  sp.setTextColor(TEXT, BG);
-  sp.setCursor(40, y); sp.print("mood");
+  char buf[32];
+
+  // Mood hearts — 4 across, centered at x=120, 12 px spacing.
+  int y = 48;
   uint8_t mood = pet_mood_tier();
   uint16_t moodCol = (mood >= 3) ? HEART : (mood >= 2) ? HOT : TEXT_DIM;
-  for (int i = 0; i < 4; i++) tiny_heart(90 + i * 14, y + 4, i < mood, moodCol);
-
-  y += 16;
-  sp.setTextColor(TEXT, BG);
-  sp.setCursor(40, y); sp.print("fed");
-  uint8_t fed = pet_fed_progress();
-  for (int i = 0; i < 10; i++) {
-    int px = 80 + i * 10;
-    if (i < fed) sp.fillCircle(px, y + 4, 2, TEXT);
-    else         sp.drawCircle(px, y + 4, 2, TEXT_DIM);
+  for (int i = 0; i < 4; i++) {
+    int x = 120 - 18 + i * 12;
+    tiny_heart(x, y, i < mood, moodCol);
   }
 
-  y += 16;
-  sp.setCursor(40, y); sp.print("energy");
-  uint8_t en = pet_energy_tier();
-  uint16_t enCol = (en >= 4) ? 0x07FF : (en >= 2) ? 0xFFE0 : HOT;
-  for (int i = 0; i < 5; i++) {
-    int px = 100 + i * 14;
-    if (i < en) sp.fillRect(px, y, 9, 8, enCol);
-    else        sp.drawRect(px, y, 9, 8, TEXT_DIM);
-  }
-
-  y += 22;
-  char buf[24];
-  sp.fillRoundRect(40, y, 52, 16, 3, HEART);
-  sp.setTextColor(BG, HEART);
-  sp.setCursor(48, y + 4);
+  // Level — big pill-style number in heart color.
+  y = 75;
+  sp.setTextSize(3);
+  sp.setTextColor(HEART, BG);
   snprintf(buf, sizeof(buf), "Lv %u", (unsigned)pet_level());
-  sp.print(buf);
+  sp.drawString(buf, 120, y);
 
-  y += 24;
+  // Approved / denied — medium size, most-used counters.
+  y = 115;
+  sp.setTextSize(2);
+  sp.setTextColor(TEXT, BG);
+  snprintf(buf, sizeof(buf), "approved %u", (unsigned)pet_approvals());
+  sp.drawString(buf, 120, y);
+  y += 22;
+  snprintf(buf, sizeof(buf), "denied %u", (unsigned)pet_denials());
+  sp.drawString(buf, 120, y);
+
+  // Napped + tokens — smaller, denser.
+  y = 168;
+  sp.setTextSize(1);
   sp.setTextColor(TEXT_DIM, BG);
-  snprintf(buf, sizeof(buf), "approved  %u", (unsigned)pet_approvals());
-  sp.setCursor(40, y); sp.print(buf); y += 12;
-  snprintf(buf, sizeof(buf), "denied    %u", (unsigned)pet_denials());
-  sp.setCursor(40, y); sp.print(buf); y += 12;
   uint32_t nap = pet_nap_seconds();
-  snprintf(buf, sizeof(buf), "napped    %luh%02lum", nap / 3600, (nap / 60) % 60);
-  sp.setCursor(40, y); sp.print(buf); y += 12;
+  snprintf(buf, sizeof(buf), "napped %luh%02lum", nap / 3600, (nap / 60) % 60);
+  sp.drawString(buf, 120, y);
+  y += 12;
 
-  // Token formatting: big numbers -> K / M.
   auto tok_fmt = [&](uint32_t v, char* out, size_t n) {
     if      (v >= 1000000) snprintf(out, n, "%lu.%luM", v / 1000000, (v / 100000) % 10);
     else if (v >= 1000)    snprintf(out, n, "%lu.%luK", v / 1000, (v / 100) % 10);
@@ -130,11 +117,13 @@ void draw_pet_stats() {
   };
   char tok[12];
   tok_fmt(pet_tokens_total(), tok, sizeof(tok));
-  snprintf(buf, sizeof(buf), "tokens    %s", tok);
-  sp.setCursor(40, y); sp.print(buf); y += 12;
-  tok_fmt(pet_tokens_today(), tok, sizeof(tok));
-  snprintf(buf, sizeof(buf), "today     %s", tok);
-  sp.setCursor(40, y); sp.print(buf);
+  snprintf(buf, sizeof(buf), "tokens %s  today %s", tok, "");
+  // Build "tokens X  today Y" as one centered line
+  char today[12];
+  tok_fmt(pet_tokens_today(), today, sizeof(today));
+  snprintf(buf, sizeof(buf), "tokens %s  today %s", tok, today);
+  sp.drawString(buf, 120, y);
 
+  sp.setTextDatum(TL_DATUM);
   sp.pushSprite(0, 0);
 }

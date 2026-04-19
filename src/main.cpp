@@ -222,36 +222,37 @@ static uint8_t wrapInto(const char* in, char out[][24], uint8_t maxRows, uint8_t
 
 static void drawHudSimple() {
   TFT_eSprite& sp = hw_display_sprite();
+  // HUD lives in the lower half of the visible circle (y=160..205).
+  // Three 12-px lines at y=164/178/192 fit inside the circle. Max char
+  // count per line is picked by the narrowest-row geometry:
+  // at y=192 the visible width is ~2*sqrt(120^2-72^2) = ~192 px, so at
+  // size-1 (6 px/char) ≈ 32 chars. We use 28 for a comfortable margin.
   const int SHOW = 3;
-  const int LH = 8;
-  const int WIDTH = 32;
-  const int AREA = SHOW * LH + 8;
+  const int TOP  = 160;
+  const int LH   = 12;
+  const int WIDTH = 28;
 
-  sp.fillRect(0, 240 - AREA, 240, AREA, TFT_BLACK);
+  sp.fillRect(0, TOP, 240, 52, TFT_BLACK);
   sp.setTextSize(1);
   sp.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-  sp.setTextDatum(TL_DATUM);
+  sp.setTextDatum(MC_DATUM);
 
   if (tama.nLines == 0) {
-    // No transcript yet; show msg as a single line if present.
     const char* line = tama.msg;
     if (line && *line) {
-      sp.setCursor(24, 240 - LH - 4);
-      sp.print(line);
+      sp.drawString(line, 120, TOP + 20);
     }
+    sp.setTextDatum(TL_DATUM);
     return;
   }
 
-  // Wrap each transcript line, build a flat display buffer (source row
-  // tracked so we could dim older lines in future — not done here for
-  // simplicity).
   static char disp[32][24];
   uint8_t nDisp = 0;
   for (uint8_t i = 0; i < tama.nLines && nDisp < 32; i++) {
     uint8_t got = wrapInto(tama.lines[i], &disp[nDisp], 32 - nDisp, WIDTH);
     nDisp += got;
   }
-  if (nDisp == 0) return;
+  if (nDisp == 0) { sp.setTextDatum(TL_DATUM); return; }
 
   uint8_t scroll = input_fsm_view().hudScroll;
   uint8_t maxBack = (nDisp > SHOW) ? (uint8_t)(nDisp - SHOW) : 0;
@@ -261,17 +262,17 @@ static void drawHudSimple() {
   int start = end - SHOW; if (start < 0) start = 0;
 
   for (int i = 0; start + i < end; i++) {
-    sp.setCursor(24, 240 - AREA + 4 + i * LH);
-    sp.print(disp[start + i]);
+    sp.drawString(disp[start + i], 120, TOP + 4 + i * LH);
   }
 
   if (scroll > 0) {
     char b[6];
     snprintf(b, sizeof(b), "-%u", (unsigned)scroll);
     sp.setTextColor(TFT_ORANGE, TFT_BLACK);
-    sp.setCursor(240 - 24, 240 - LH - 4);
-    sp.print(b);
+    sp.setTextDatum(TR_DATUM);
+    sp.drawString(b, 210, TOP + 4);
   }
+  sp.setTextDatum(TL_DATUM);
 }
 
 // Pet mode runtime state
@@ -304,17 +305,19 @@ static void cb_on_exit_pet() {
 }
 
 static void cb_on_pet_rotation(bool cw) {
-  // pet_gesture runs on rotation events regardless. Step with the
-  // reconstructed InputEvent for uniformity.
   PetGesture g = pet_gesture_step(cw ? EVT_ROT_CW : EVT_ROT_CCW, millis());
+  Serial.printf("[pet] rot=%s gesture=%d\n", cw ? "CW" : "CCW", (int)g);
   if (g == PGEST_STROKE) {
-    if (!hw_motor_purr_active()) hw_motor_purr_start(1);
+    if (!hw_motor_purr_active()) {
+      hw_motor_purr_start(2);   // level 2 = strength 80; feels noticeably
+      Serial.println("[pet] purr start");
+    }
     petStrokeLastMs = millis();
-    petStrokeTotalMs += 200;   // approximate per-stroke accumulator
+    petStrokeTotalMs += 200;
   } else if (g == PGEST_TICKLE) {
-    // Reverse the direction the user was turning so the knob pushes back.
     hw_motor_kick(cw ? 1 : 0, settings().haptic + 1 > 4 ? 4 : settings().haptic + 1);
     petDizzyUntilMs = millis() + PET_DIZZY_DURATION;
+    Serial.println("[pet] tickle kick");
   }
 }
 
@@ -413,7 +416,13 @@ void loop() {
   // Fire motor bump only on rotation events. Open-loop pulse with no finger
   // on the knob (i.e. during CLICK/LONG/DOUBLE) can freely spin the shaft
   // since there's no hand resistance to absorb the torque.
-  if (e == EVT_ROT_CW || e == EVT_ROT_CCW) hw_motor_click_default();
+  // Rotation bump: only in non-pet modes. In pet mode the gesture classifier
+  // owns motor feedback (purr / kick); adding a generic bump on every detent
+  // drowns out the subtle purr cadence.
+  if (e == EVT_ROT_CW || e == EVT_ROT_CCW) {
+    DisplayMode m = input_fsm_view().mode;
+    if (m != DISP_PET && m != DISP_PET_STATS) hw_motor_click_default();
+  }
 
   if (inPrompt) {
     switch (e) {
