@@ -315,6 +315,7 @@ static void cb_on_pet_rotation(bool cw) {
     petStrokeLastMs = millis();
     petStrokeTotalMs += 200;
   } else if (g == PGEST_TICKLE) {
+    hw_motor_purr_stop();   // kick and purr would fight the motor
     hw_motor_kick(cw ? 1 : 0, settings().haptic + 1 > 4 ? 4 : settings().haptic + 1);
     petDizzyUntilMs = millis() + PET_DIZZY_DURATION;
     Serial.println("[pet] tickle kick");

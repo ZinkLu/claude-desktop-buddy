@@ -5,7 +5,6 @@
 void setUp() { pet_gesture_internal::reset_for_tests(); }
 void tearDown() {}
 
-// Helper to feed N events with spacing gap_ms.
 static PetGesture feed(InputEvent events[], int n, uint32_t t0, uint32_t gap_ms) {
   PetGesture last = PGEST_NONE;
   for (int i = 0; i < n; i++) {
@@ -15,86 +14,75 @@ static PetGesture feed(InputEvent events[], int n, uint32_t t0, uint32_t gap_ms)
   return last;
 }
 
-void test_no_events_returns_none() {
+// Non-rotation events are ignored.
+void test_non_rotation_returns_none() {
   TEST_ASSERT_EQUAL(PGEST_NONE, pet_gesture_step(EVT_NONE, 1000));
   TEST_ASSERT_EQUAL(PGEST_NONE, pet_gesture_step(EVT_CLICK, 1100));
+  TEST_ASSERT_EQUAL(PGEST_NONE, pet_gesture_step(EVT_LONG, 1200));
+  TEST_ASSERT_EQUAL(PGEST_NONE, pet_gesture_step(EVT_DOUBLE, 1300));
 }
 
-void test_single_rotation_returns_none() {
-  TEST_ASSERT_EQUAL(PGEST_NONE, pet_gesture_step(EVT_ROT_CW, 1000));
+// Any rotation = stroke. New simpler model: slow rotation is the natural
+// petting gesture; no alternation or timing pattern required.
+void test_single_rotation_is_stroke() {
+  TEST_ASSERT_EQUAL(PGEST_STROKE, pet_gesture_step(EVT_ROT_CW, 1000));
 }
 
-void test_three_alternations_returns_none() {
-  // 3 events is below the stroke threshold (4+).
-  InputEvent seq[] = { EVT_ROT_CW, EVT_ROT_CCW, EVT_ROT_CW };
-  TEST_ASSERT_EQUAL(PGEST_NONE, feed(seq, 3, 1000, 50));
+void test_slow_single_direction_is_stroke() {
+  // Slow rotation, well under tickle threshold — classic petting.
+  InputEvent seq[] = { EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW };
+  TEST_ASSERT_EQUAL(PGEST_STROKE, feed(seq, 3, 1000, 300));
 }
 
-void test_four_alternations_within_400ms_is_stroke() {
-  // 4 events in 300 ms, directions alternate twice.
+void test_alternating_rotation_is_stroke() {
+  // Back-and-forth counts as stroke too.
   InputEvent seq[] = { EVT_ROT_CW, EVT_ROT_CCW, EVT_ROT_CW, EVT_ROT_CCW };
   TEST_ASSERT_EQUAL(PGEST_STROKE, feed(seq, 4, 1000, 80));
 }
 
-void test_four_uniform_within_400ms_is_not_stroke() {
-  // 4 events same direction, fast. Only 1 direction change = 0 alternations
-  // — this is a borderline case but by our rule "2+ alternations" it's not stroke.
-  // Also not tickle unless we hit 5 events within 250 ms.
-  InputEvent seq[] = { EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW };
-  TEST_ASSERT_EQUAL(PGEST_NONE, feed(seq, 4, 1000, 80));
-}
-
-void test_five_uniform_within_250ms_is_tickle() {
-  // 5 same-direction events in 200 ms.
+// Tickle: 5+ same-direction events within 250 ms.
+void test_rapid_same_direction_is_tickle() {
   InputEvent seq[] = { EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW };
   TEST_ASSERT_EQUAL(PGEST_TICKLE, feed(seq, 5, 1000, 40));
 }
 
-void test_five_spread_over_600ms_is_not_tickle() {
-  // 5 same-direction events spread slowly — not tickle.
+void test_slow_same_direction_is_not_tickle() {
+  // 5 same-direction events, but spread over 600 ms → still stroke, not tickle.
   InputEvent seq[] = { EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW };
-  // 5 events over 600 ms = gap 150 ms, which is outside 250 ms window.
-  TEST_ASSERT_EQUAL(PGEST_NONE, feed(seq, 5, 1000, 150));
+  TEST_ASSERT_EQUAL(PGEST_STROKE, feed(seq, 5, 1000, 150));
 }
 
-void test_cooldown_prevents_double_stroke() {
-  // First stroke fires, then another set of alternations 100 ms later should not.
-  InputEvent seq1[] = { EVT_ROT_CW, EVT_ROT_CCW, EVT_ROT_CW, EVT_ROT_CCW };
-  TEST_ASSERT_EQUAL(PGEST_STROKE, feed(seq1, 4, 1000, 80));
-  // Now feed more events within 300 ms cooldown — must return NONE despite pattern.
-  InputEvent seq2[] = { EVT_ROT_CW, EVT_ROT_CCW, EVT_ROT_CW, EVT_ROT_CCW };
-  TEST_ASSERT_EQUAL(PGEST_NONE, feed(seq2, 4, 1350, 40));
+void test_rapid_alternating_is_stroke_not_tickle() {
+  // 5 rapid events but directions alternate — tickle requires uniform direction.
+  InputEvent seq[] = { EVT_ROT_CW, EVT_ROT_CCW, EVT_ROT_CW, EVT_ROT_CCW, EVT_ROT_CW };
+  TEST_ASSERT_EQUAL(PGEST_STROKE, feed(seq, 5, 1000, 40));
 }
 
-void test_cooldown_expires() {
-  InputEvent seq1[] = { EVT_ROT_CW, EVT_ROT_CCW, EVT_ROT_CW, EVT_ROT_CCW };
-  TEST_ASSERT_EQUAL(PGEST_STROKE, feed(seq1, 4, 1000, 80));
-  // 500 ms after the stroke fired — well past the 300 ms cooldown.
-  InputEvent seq2[] = { EVT_ROT_CW, EVT_ROT_CCW, EVT_ROT_CW, EVT_ROT_CCW };
-  TEST_ASSERT_EQUAL(PGEST_STROKE, feed(seq2, 4, 1800, 80));
+// Tickle cooldown prevents follow-up classification for 500 ms.
+void test_tickle_cooldown_suppresses_stroke() {
+  InputEvent tickle[] = { EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW };
+  TEST_ASSERT_EQUAL(PGEST_TICKLE, feed(tickle, 5, 1000, 40));
+  // 100 ms after the tickle (still well within 500 ms cooldown) — NONE.
+  TEST_ASSERT_EQUAL(PGEST_NONE, pet_gesture_step(EVT_ROT_CW, 1260));
 }
 
-void test_non_rotation_events_ignored() {
-  // Feeding CLICK between rotations should not break pattern detection.
-  pet_gesture_step(EVT_ROT_CW,  1000);
-  pet_gesture_step(EVT_CLICK,   1020);   // ignored
-  pet_gesture_step(EVT_ROT_CCW, 1080);
-  pet_gesture_step(EVT_ROT_CW,  1160);
-  PetGesture g = pet_gesture_step(EVT_ROT_CCW, 1240);
-  TEST_ASSERT_EQUAL(PGEST_STROKE, g);
+void test_tickle_cooldown_expires() {
+  InputEvent tickle[] = { EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW, EVT_ROT_CW };
+  TEST_ASSERT_EQUAL(PGEST_TICKLE, feed(tickle, 5, 1000, 40));
+  // 600 ms past the tickle (cooldown is 500 ms) — stroke again.
+  TEST_ASSERT_EQUAL(PGEST_STROKE, pet_gesture_step(EVT_ROT_CW, 1800));
 }
 
 int main() {
   UNITY_BEGIN();
-  RUN_TEST(test_no_events_returns_none);
-  RUN_TEST(test_single_rotation_returns_none);
-  RUN_TEST(test_three_alternations_returns_none);
-  RUN_TEST(test_four_alternations_within_400ms_is_stroke);
-  RUN_TEST(test_four_uniform_within_400ms_is_not_stroke);
-  RUN_TEST(test_five_uniform_within_250ms_is_tickle);
-  RUN_TEST(test_five_spread_over_600ms_is_not_tickle);
-  RUN_TEST(test_cooldown_prevents_double_stroke);
-  RUN_TEST(test_cooldown_expires);
-  RUN_TEST(test_non_rotation_events_ignored);
+  RUN_TEST(test_non_rotation_returns_none);
+  RUN_TEST(test_single_rotation_is_stroke);
+  RUN_TEST(test_slow_single_direction_is_stroke);
+  RUN_TEST(test_alternating_rotation_is_stroke);
+  RUN_TEST(test_rapid_same_direction_is_tickle);
+  RUN_TEST(test_slow_same_direction_is_not_tickle);
+  RUN_TEST(test_rapid_alternating_is_stroke_not_tickle);
+  RUN_TEST(test_tickle_cooldown_suppresses_stroke);
+  RUN_TEST(test_tickle_cooldown_expires);
   return UNITY_END();
 }
