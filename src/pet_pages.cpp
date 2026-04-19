@@ -34,10 +34,15 @@ static void tiny_heart(int x, int y, bool filled, uint16_t col) {
   }
 }
 
+// Format a token count into at most 4 visible chars so the row always
+// fits: "12"  "999"  "1.2K"  "127K"  "1.2M"  "127M"  "1.2G".
 static void tok_fmt(uint32_t v, char* out, size_t n) {
-  if      (v >= 1000000) snprintf(out, n, "%lu.%luM", v / 1000000, (v / 100000) % 10);
-  else if (v >= 1000)    snprintf(out, n, "%lu.%luK", v / 1000, (v / 100) % 10);
-  else                   snprintf(out, n, "%lu", (unsigned long)v);
+  if      (v >= 1000000000UL) snprintf(out, n, "%lu.%luG", v / 1000000000UL, (v / 100000000UL) % 10);
+  else if (v >= 10000000UL)   snprintf(out, n, "%luM",     v / 1000000UL);
+  else if (v >= 1000000UL)    snprintf(out, n, "%lu.%luM", v / 1000000UL,    (v / 100000UL)   % 10);
+  else if (v >= 10000UL)      snprintf(out, n, "%luK",     v / 1000UL);
+  else if (v >= 1000UL)       snprintf(out, n, "%lu.%luK", v / 1000UL,       (v / 100UL)      % 10);
+  else                        snprintf(out, n, "%lu",      (unsigned long)v);
 }
 
 void draw_pet_main(uint8_t personaState, bool showHint) {
@@ -59,22 +64,22 @@ void draw_pet_main(uint8_t personaState, bool showHint) {
   }
 
   // Full stats footer (y=150..210, 60 px). All stats tracked in stats.h
-  // surface here; no sub-page. 4 rows, all size-1 for density, except
-  // "Lv N" which uses size-2 at heart color so the level badge pops.
+  // surface here; no sub-page. Every row uses size-1 text for visual
+  // uniformity; level gets heart-color emphasis instead of a bigger font.
   //
   //  Row 1 (y≈160):  ♥♥♥♥      Lv 3           mood hearts + level
   //  Row 2 (y≈178):  fed ●●●●●○○○○○  en █████  fed pips + energy bars
   //  Row 3 (y≈193):  appr 42  deny 3  nap 2h   counters
-  //  Row 4 (y≈206):  127.4K total  8.2K today  tokens
+  //  Row 4 (y≈206):  127K total  8.2K today    tokens
   char buf[48], tok[12], today[12];
 
-  // Row 1: hearts (center-left) + Lv size-2 (center-right).
+  // Row 1: hearts (center-left) + Lv in heart color (center-right).
   uint8_t mood = pet_mood_tier();
   uint16_t moodCol = (mood >= 3) ? HEART : (mood >= 2) ? HOT : TEXT_DIM;
-  for (int i = 0; i < 4; i++) tiny_heart(64 + i * 12, 160, i < mood, moodCol);
+  for (int i = 0; i < 4; i++) tiny_heart(80 + i * 12, 160, i < mood, moodCol);
   sp.setTextDatum(ML_DATUM);
   sp.setTextColor(HEART, BG);
-  sp.setTextSize(2);
+  sp.setTextSize(1);
   snprintf(buf, sizeof(buf), "Lv %u", (unsigned)pet_level());
   sp.drawString(buf, 140, 160);
 
