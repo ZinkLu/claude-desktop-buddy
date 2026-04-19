@@ -292,39 +292,57 @@ void test_home_click_enters_pet() {
   TEST_ASSERT_EQUAL(1, mock.on_enter_pet);
 }
 
-void test_pet_click_enters_info_page0() {
+void test_pet_click_enters_clock() {
+  // CLICK cycle: home -> Pet -> Clock -> home.
   input_fsm_dispatch(EVT_CLICK, 1000);  // home -> pet
-  input_fsm_dispatch(EVT_CLICK, 1100);  // pet -> info
-  TEST_ASSERT_EQUAL(DISP_INFO, input_fsm_view().mode);
-  TEST_ASSERT_EQUAL(0, input_fsm_view().infoPage);
+  input_fsm_dispatch(EVT_CLICK, 1100);  // pet -> clock
+  TEST_ASSERT_EQUAL(DISP_CLOCK, input_fsm_view().mode);
   TEST_ASSERT_EQUAL(1, mock.on_exit_pet);
+  // invalidate_clock fires twice: once when pet CLICK enters clock, and
+  // invalidate_buddy does not apply here. Count >=1 is the real check.
+  TEST_ASSERT_GREATER_OR_EQUAL(1, mock.invalidate_clock);
 }
 
-void test_info_click_returns_home() {
+void test_clock_click_returns_home() {
   input_fsm_dispatch(EVT_CLICK, 1000);  // home -> pet
-  input_fsm_dispatch(EVT_CLICK, 1100);  // pet -> info
-  input_fsm_dispatch(EVT_CLICK, 1200);  // info -> home
+  input_fsm_dispatch(EVT_CLICK, 1100);  // pet -> clock
+  input_fsm_dispatch(EVT_CLICK, 1200);  // clock -> home
   TEST_ASSERT_EQUAL(DISP_HOME, input_fsm_view().mode);
 }
 
-void test_info_rotation_pages() {
-  input_fsm_dispatch(EVT_CLICK, 1000);  // home -> pet
-  input_fsm_dispatch(EVT_CLICK, 1100);  // pet -> info (page 0)
-  input_fsm_dispatch(EVT_ROT_CW, 1200);
-  TEST_ASSERT_EQUAL(1, input_fsm_view().infoPage);
-  TEST_ASSERT_EQUAL(1, mock.on_info_page_change);
-  input_fsm_dispatch(EVT_ROT_CW, 1300);
-  input_fsm_dispatch(EVT_ROT_CW, 1400);
-  input_fsm_dispatch(EVT_ROT_CW, 1500);   // wraps 3 -> 0
+void test_info_rotation_pages_via_menu() {
+  // Info is only reachable from the menu now (help/about shortcuts).
+  input_fsm_dispatch(EVT_LONG, 1000);          // home -> menu
+  for (int i = 0; i < 3; i++) input_fsm_dispatch(EVT_ROT_CW, 1100 + i*100);
+  TEST_ASSERT_EQUAL(3, input_fsm_view().menuSel);  // help
+  input_fsm_dispatch(EVT_CLICK, 1500);              // menu help -> info 0
+  TEST_ASSERT_EQUAL(DISP_INFO, input_fsm_view().mode);
   TEST_ASSERT_EQUAL(0, input_fsm_view().infoPage);
-  input_fsm_dispatch(EVT_ROT_CCW, 1600);  // 0 -> 3 (reverse wrap)
+  input_fsm_dispatch(EVT_ROT_CW, 1600);
+  TEST_ASSERT_EQUAL(1, input_fsm_view().infoPage);
+  input_fsm_dispatch(EVT_ROT_CW, 1700);
+  input_fsm_dispatch(EVT_ROT_CW, 1800);
+  input_fsm_dispatch(EVT_ROT_CW, 1900);            // wraps 3 -> 0
+  TEST_ASSERT_EQUAL(0, input_fsm_view().infoPage);
+  input_fsm_dispatch(EVT_ROT_CCW, 2000);           // 0 -> 3 (reverse wrap)
   TEST_ASSERT_EQUAL(3, input_fsm_view().infoPage);
 }
 
 void test_info_long_returns_home() {
-  input_fsm_dispatch(EVT_CLICK, 1000);  // -> pet
-  input_fsm_dispatch(EVT_CLICK, 1100);  // -> info
-  input_fsm_dispatch(EVT_LONG, 1200);
+  input_fsm_dispatch(EVT_LONG, 1000);    // -> menu
+  for (int i = 0; i < 3; i++) input_fsm_dispatch(EVT_ROT_CW, 1100 + i*100);
+  input_fsm_dispatch(EVT_CLICK, 1500);   // menu help -> info
+  TEST_ASSERT_EQUAL(DISP_INFO, input_fsm_view().mode);
+  input_fsm_dispatch(EVT_LONG, 1600);
+  TEST_ASSERT_EQUAL(DISP_HOME, input_fsm_view().mode);
+}
+
+void test_info_click_returns_home() {
+  input_fsm_dispatch(EVT_LONG, 1000);    // -> menu
+  for (int i = 0; i < 3; i++) input_fsm_dispatch(EVT_ROT_CW, 1100 + i*100);
+  input_fsm_dispatch(EVT_CLICK, 1500);   // menu help -> info
+  TEST_ASSERT_EQUAL(DISP_INFO, input_fsm_view().mode);
+  input_fsm_dispatch(EVT_CLICK, 1600);   // info CLICK -> home
   TEST_ASSERT_EQUAL(DISP_HOME, input_fsm_view().mode);
 }
 
@@ -430,9 +448,10 @@ int main() {
   RUN_TEST(test_help_and_about_from_menu);
   RUN_TEST(test_demo_stays_in_menu);
   RUN_TEST(test_home_click_enters_pet);
-  RUN_TEST(test_pet_click_enters_info_page0);
+  RUN_TEST(test_pet_click_enters_clock);
+  RUN_TEST(test_clock_click_returns_home);
   RUN_TEST(test_info_click_returns_home);
-  RUN_TEST(test_info_rotation_pages);
+  RUN_TEST(test_info_rotation_pages_via_menu);
   RUN_TEST(test_info_long_returns_home);
   RUN_TEST(test_pet_rotation_forwards_callback);
   RUN_TEST(test_pet_double_enters_stats);

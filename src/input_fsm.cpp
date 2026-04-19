@@ -147,9 +147,11 @@ void input_fsm_dispatch(InputEvent e, uint32_t now_ms) {
       return;
     }
     if (e == EVT_CLICK) {
+      // CLICK cycle: home -> Pet -> Clock -> home. Pet CLICK advances to
+      // clock (functional mode switch, not a display-panel switch).
       CALL0(on_exit_pet);
-      _enter(DISP_INFO); _v.infoPage = 0;
-      CALL0(invalidate_panel);
+      _enter(DISP_CLOCK);
+      CALL0(invalidate_clock);
       return;
     }
     if (e == EVT_DOUBLE) {
@@ -179,6 +181,17 @@ void input_fsm_dispatch(InputEvent e, uint32_t now_ms) {
     }
     // Rotation is a no-op.
     return;
+  }
+
+  // --- Clock mode ----------------------------------------------------------
+  if (_v.mode == DISP_CLOCK) {
+    if (e == EVT_CLICK) {
+      // CLICK cycle close: Clock -> home.
+      _go_home();
+      return;
+    }
+    // LONG falls through to the generic "any mode LONG -> home" handler
+    // below. Rotation is a no-op in clock mode.
   }
 
   // --- Info mode -----------------------------------------------------------
