@@ -57,7 +57,7 @@ static void _clear_reset_arm() {
 }
 
 static void _go_home() {
-  if (_v.mode == DISP_PET || _v.mode == DISP_PET_STATS) {
+  if (_v.mode == DISP_PET) {
     CALL0(on_exit_pet);
   }
   _v.mode = DISP_HOME;
@@ -154,33 +154,13 @@ void input_fsm_dispatch(InputEvent e, uint32_t now_ms) {
       CALL0(invalidate_clock);
       return;
     }
-    if (e == EVT_DOUBLE) {
-      _enter(DISP_PET_STATS);
-      CALL0(invalidate_panel);
-      return;
-    }
+    // DOUBLE reserved for future — stats now live on the pet main page.
     if (e == EVT_LONG) {
       CALL0(on_pet_long_press);
       // _go_home() handles on_exit_pet since mode is still DISP_PET here.
       _go_home();
       return;
     }
-  }
-
-  // --- Pet stats sub-page --------------------------------------------------
-  if (_v.mode == DISP_PET_STATS) {
-    if (e == EVT_CLICK || e == EVT_DOUBLE) {
-      _enter(DISP_PET);
-      CALL0(invalidate_panel);
-      return;
-    }
-    if (e == EVT_LONG) {
-      // _go_home() handles on_exit_pet since mode is still DISP_PET_STATS here.
-      _go_home();
-      return;
-    }
-    // Rotation is a no-op.
-    return;
   }
 
   // --- Clock mode ----------------------------------------------------------

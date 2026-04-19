@@ -356,16 +356,10 @@ void test_pet_rotation_forwards_callback() {
   TEST_ASSERT_FALSE(mock.last_pet_rotation_cw);
 }
 
-void test_pet_double_enters_stats() {
+void test_pet_double_is_noop() {
+  // Stats now live on the pet main page; DOUBLE is reserved / no-op.
   input_fsm_dispatch(EVT_CLICK, 1000);   // -> pet
   input_fsm_dispatch(EVT_DOUBLE, 1100);
-  TEST_ASSERT_EQUAL(DISP_PET_STATS, input_fsm_view().mode);
-}
-
-void test_pet_stats_click_returns_to_pet() {
-  input_fsm_dispatch(EVT_CLICK, 1000);   // -> pet
-  input_fsm_dispatch(EVT_DOUBLE, 1100);  // -> stats
-  input_fsm_dispatch(EVT_CLICK, 1200);
   TEST_ASSERT_EQUAL(DISP_PET, input_fsm_view().mode);
 }
 
@@ -454,8 +448,7 @@ int main() {
   RUN_TEST(test_info_rotation_pages_via_menu);
   RUN_TEST(test_info_long_returns_home);
   RUN_TEST(test_pet_rotation_forwards_callback);
-  RUN_TEST(test_pet_double_enters_stats);
-  RUN_TEST(test_pet_stats_click_returns_to_pet);
+  RUN_TEST(test_pet_double_is_noop);
   RUN_TEST(test_pet_long_press_triggers_squish_callback);
   RUN_TEST(test_home_rotation_scrolls_hud);
   RUN_TEST(test_home_hud_scroll_clamps_at_30);

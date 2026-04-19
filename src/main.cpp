@@ -161,8 +161,9 @@ static void drawApproval() {
   TFT_eSprite& sp = hw_display_sprite();
   uint16_t bg = TFT_BLACK;
 
-  // Bottom panel y=160..220
-  sp.fillRect(0, 160, 240, 60, bg);
+  // Bottom panel. Clear y=148..220 — same region HUD uses, so transitioning
+  // between HUD and approval never leaves stale pixels at the boundary.
+  sp.fillRect(0, 148, 240, 72, bg);
   sp.drawFastHLine(24, 160, 192, TFT_DARKGREY);
 
   sp.setTextDatum(TL_DATUM);
@@ -232,7 +233,9 @@ static void drawHudSimple() {
   const int LH   = 12;
   const int WIDTH = 28;
 
-  sp.fillRect(0, TOP, 240, 60, TFT_BLACK);
+  // Clear y=148..220 — matches drawApproval's region so switching between
+  // HUD and approval never leaves stale pixels at the boundary.
+  sp.fillRect(0, 148, 240, 72, TFT_BLACK);
   sp.setTextSize(1);
   sp.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
   sp.setTextDatum(MC_DATUM);
@@ -438,7 +441,7 @@ void loop() {
   // drowns out the subtle purr cadence.
   if (e == EVT_ROT_CW || e == EVT_ROT_CCW) {
     DisplayMode m = input_fsm_view().mode;
-    if (m != DISP_PET && m != DISP_PET_STATS) hw_motor_click_default();
+    if (m != DISP_PET) hw_motor_click_default();
   }
 
   if (inPrompt) {
@@ -523,9 +526,6 @@ void loop() {
       draw_pet_main(state, showHint);
       break;
     }
-    case DISP_PET_STATS:
-      draw_pet_stats();
-      break;
     case DISP_HOME:
     default: {
       if (buddyMode) {
