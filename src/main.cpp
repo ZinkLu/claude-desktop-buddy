@@ -11,12 +11,10 @@
 #include "character.h"
 #include "data.h"          // header-only; include once
 #include "stats.h"         // header-only; include once
+#include "input_fsm.h"
+#include "menu_panels.h"
 
 enum PersonaState { P_SLEEP, P_IDLE, P_BUSY, P_ATTENTION, P_CELEBRATE, P_DIZZY, P_HEART };
-
-// Phase 2-C: home ↔ clock toggle via LONG press.
-enum DisplayMode { DISP_HOME, DISP_CLOCK };
-static DisplayMode displayMode = DISP_HOME;
 
 static char btName[16] = "Claude";
 static TamaState tama{};
@@ -38,6 +36,73 @@ uint8_t panel_brightness()     { return settings().brightness; }
 uint8_t panel_haptic()         { return settings().haptic; }
 bool    panel_transcript_on()  { return settings().hud; }
 bool    panel_data_demo()      { return dataDemo(); }
+
+// Main owns the "cycle this setting to its next value" logic; input_fsm
+// just tells us "user clicked brightness / haptic / transcript". This
+// keeps all NVS writes centralized here.
+
+static void cycle_brightness(uint8_t) {
+  Settings& s = settings();
+  s.brightness = (uint8_t)((s.brightness + 1) % 5);
+  hw_display_set_brightness((s.brightness + 1) * 20);   // 0..4 -> 20..100
+  settingsSave();
+}
+
+static void cycle_haptic(uint8_t) {
+  Settings& s = settings();
+  s.haptic = (uint8_t)((s.haptic + 1) % 5);
+  settingsSave();
+  hw_motor_click_default();   // fire at new strength so user feels it
+}
+
+static void toggle_transcript(bool) {
+  Settings& s = settings();
+  s.hud = !s.hud;
+  settingsSave();
+}
+
+static void action_turn_off()    { hw_power_off(); }   // never returns
+static void action_toggle_demo() { dataSetDemo(!dataDemo()); }
+static void invalidate_panel_cb(){ /* main loop repaints each frame; no-op */ }
+
+static void action_delete_char() {
+  // Wipe /characters/ and reboot. Matches upstream's "delete char" behavior.
+  File d = LittleFS.open("/characters");
+  if (d && d.isDirectory()) {
+    File e;
+    while ((e = d.openNextFile())) {
+      char path[80];
+      snprintf(path, sizeof(path), "/characters/%s", e.name());
+      if (e.isDirectory()) {
+        File f;
+        while ((f = e.openNextFile())) {
+          char fp[128];
+          snprintf(fp, sizeof(fp), "%s/%s", path, f.name());
+          f.close();
+          LittleFS.remove(fp);
+        }
+        e.close();
+        LittleFS.rmdir(path);
+      } else {
+        e.close();
+        LittleFS.remove(path);
+      }
+    }
+    d.close();
+  }
+  delay(300);
+  ESP.restart();
+}
+
+static void action_factory_reset() {
+  _prefs.begin("buddy", false);
+  _prefs.clear();
+  _prefs.end();
+  LittleFS.format();
+  bleClearBonds();
+  delay(300);
+  ESP.restart();
+}
 
 static void startBt() {
   uint8_t mac[6] = {0};
@@ -126,6 +191,23 @@ void setup() {
   gifAvailable = characterLoaded();
   buddyMode = !gifAvailable;  // prefer GIF if installed
 
+  static const FsmCallbacks fsm_cb = {
+    action_turn_off,
+    action_delete_char,
+    action_factory_reset,
+    action_toggle_demo,
+    cycle_brightness,
+    cycle_haptic,
+    toggle_transcript,
+    clock_face_invalidate,
+    buddyInvalidate,
+    invalidate_panel_cb,
+  };
+  input_fsm_init(&fsm_cb);
+
+  // Apply persisted brightness now that stats are loaded.
+  hw_display_set_brightness((settings().brightness + 1) * 20);
+
   startBt();
   Serial.printf("ready: mode=%s\n", buddyMode ? "ascii" : "gif");
 }
@@ -138,6 +220,16 @@ void loop() {
   dataPoll(&tama);
   activeState = derive(tama);
 
+  static uint32_t lastPasskey = 0;
+  uint32_t pk = blePasskey();
+  if (pk && !lastPasskey) {
+    Serial.printf("passkey: %06lu\n", (unsigned long)pk);
+    input_fsm_on_passkey_change(true);
+  } else if (!pk && lastPasskey) {
+    input_fsm_on_passkey_change(false);
+  }
+  lastPasskey = pk;
+
   bool inPrompt = tama.promptId[0] && !responseSent;
 
   // New prompt arrival: reset highlight, clear sent flag, stamp time
@@ -148,10 +240,7 @@ void loop() {
     approvalChoice = true;
     if (tama.promptId[0]) {
       promptArrivedMs = now;
-      if (displayMode == DISP_CLOCK) {
-        displayMode = DISP_HOME;
-        buddyInvalidate();   // force home first-frame repaint
-      }
+      input_fsm_force_home_on_prompt();
     }
   }
 
@@ -182,22 +271,17 @@ void loop() {
       default: break;
     }
   } else {
-    // Non-prompt input (free exploration) — currently no-op; Task 8+ could
-    // wire rotation to GIF/species cycling or menu.
+    input_fsm_dispatch(e, now);
     switch (e) {
-      case EVT_LONG:
-        Serial.println("LONG");
-        if (displayMode == DISP_HOME) {
-          displayMode = DISP_CLOCK;
-          clock_face_invalidate();
-        } else {
-          displayMode = DISP_HOME;
-          buddyInvalidate();
-        }
-        break;
+      case EVT_ROT_CW:  Serial.println("CW");     break;
+      case EVT_ROT_CCW: Serial.println("CCW");    break;
+      case EVT_CLICK:   Serial.println("CLICK");  break;
+      case EVT_DOUBLE:  Serial.println("DOUBLE"); break;
+      case EVT_LONG:    Serial.println("LONG");   break;
       default: break;
     }
   }
+  input_fsm_tick(now);   // clears expired reset arm each loop
 
   if (now - lastHeartbeat >= 5000) {
     lastHeartbeat = now;
@@ -210,26 +294,35 @@ void loop() {
   TFT_eSprite& sp = hw_display_sprite();
   if (firstFrame) { sp.fillSprite(TFT_BLACK); firstFrame = false; }
 
-  if (displayMode == DISP_CLOCK) {
-    clock_face_tick();
-  } else {
-    if (buddyMode) {
-      buddyTick((uint8_t)activeState);
-    } else if (characterLoaded()) {
-      characterSetState((uint8_t)activeState);
-      characterTick();
-    } else {
-      // defensive: no renderer available
-      sp.setTextDatum(MC_DATUM);
-      sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
-      sp.drawString("no character", 120, 120);
-      sp.setTextDatum(TL_DATUM);
+  DisplayMode m = input_fsm_view().mode;
+  switch (m) {
+    case DISP_CLOCK:
+      clock_face_tick();
+      break;
+    case DISP_MENU:     draw_main_menu(); break;
+    case DISP_SETTINGS: draw_settings();  break;
+    case DISP_RESET:    draw_reset();     break;
+    case DISP_HELP:     draw_help();      break;
+    case DISP_ABOUT:    draw_about();     break;
+    case DISP_PASSKEY:  draw_passkey();   break;
+    case DISP_HOME:
+    default: {
+      if (buddyMode) {
+        buddyTick((uint8_t)activeState);
+      } else if (characterLoaded()) {
+        characterSetState((uint8_t)activeState);
+        characterTick();
+      } else {
+        sp.setTextDatum(MC_DATUM);
+        sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
+        sp.drawString("no character", 120, 120);
+        sp.setTextDatum(TL_DATUM);
+      }
+      if (inPrompt)            drawApproval();    // approvals always show
+      else if (settings().hud) drawHudSimple();   // transcript gates only passive HUD
+      sp.pushSprite(0, 0);
+      break;
     }
-
-    if (inPrompt) drawApproval();
-    else          drawHudSimple();
-
-    sp.pushSprite(0, 0);
   }
   delay(20);
 }
