@@ -9,6 +9,8 @@
 static const uint8_t MENU_N     = 7;
 static const uint8_t SETTINGS_N = 5;
 static const uint8_t RESET_N    = 3;
+static const uint8_t INFO_N        = 4;
+static const uint8_t HUD_MAX_SCROLL = 30;
 static const uint32_t RESET_CONFIRM_WINDOW_MS = 3000;
 
 // Module state
@@ -24,6 +26,8 @@ static void _reset_state() {
   _v.resetSel = 0;
   _v.resetConfirmIdx = 0xFF;
   _v.resetConfirmUntil = 0;
+  _v.infoPage = 0;
+  _v.hudScroll = 0;
   _previousForPasskey = DISP_HOME;
   _passkeyActive = false;
 }
@@ -53,6 +57,9 @@ static void _clear_reset_arm() {
 }
 
 static void _go_home() {
+  if (_v.mode == DISP_PET || _v.mode == DISP_PET_STATS) {
+    CALL0(on_exit_pet);
+  }
   _v.mode = DISP_HOME;
   _clear_reset_arm();
   CALL0(invalidate_buddy);
@@ -64,8 +71,8 @@ static void _menu_click(uint8_t idx) {
     case 0: _enter(DISP_SETTINGS); _v.settingsSel = 0; _clear_reset_arm(); CALL0(invalidate_panel); break;
     case 1: _enter(DISP_CLOCK); CALL0(invalidate_clock); break;
     case 2: CALL0(turn_off); break;    // never returns; FSM state irrelevant after
-    case 3: _enter(DISP_HELP); CALL0(invalidate_panel); break;
-    case 4: _enter(DISP_ABOUT); CALL0(invalidate_panel); break;
+    case 3: _enter(DISP_INFO); _v.infoPage = 0; CALL0(invalidate_panel); CALL1(on_info_page_change, 0); break;  // help -> info 0
+    case 4: _enter(DISP_INFO); _v.infoPage = 3; CALL0(invalidate_panel); CALL1(on_info_page_change, 3); break;  // about -> info 3
     case 5: CALL0(toggle_demo); CALL0(invalidate_panel); break;   // stays in menu
     case 6: _go_home(); break;
     default: break;
@@ -107,6 +114,93 @@ static void _reset_click(uint8_t idx, uint32_t now) {
 void input_fsm_dispatch(InputEvent e, uint32_t now_ms) {
   // Passkey overlay swallows all input.
   if (_passkeyActive) return;
+
+  // --- Home CLICK cycle / HUD scroll (Phase 2-B) --------------------------
+  if (_v.mode == DISP_HOME) {
+    if (e == EVT_CLICK) {
+      // Only enter pet if no prompt is active. (Prompt handling is in
+      // main.cpp, which checks inPrompt before calling dispatch for CLICK.
+      // Here we assume the caller has already decided to route the click
+      // to the FSM — i.e., not in prompt.)
+      _enter(DISP_PET);
+      CALL0(on_enter_pet);
+      CALL0(invalidate_panel);
+      return;
+    }
+    if (e == EVT_ROT_CW) {
+      if (_v.hudScroll < HUD_MAX_SCROLL) _v.hudScroll++;
+      CALL1(on_hud_scroll_change, _v.hudScroll);
+      return;
+    }
+    if (e == EVT_ROT_CCW) {
+      if (_v.hudScroll > 0) _v.hudScroll--;
+      CALL1(on_hud_scroll_change, _v.hudScroll);
+      return;
+    }
+    // EVT_LONG falls through to existing "home -> menu" handler below.
+  }
+
+  // --- Pet mode ------------------------------------------------------------
+  if (_v.mode == DISP_PET) {
+    if (e == EVT_ROT_CW || e == EVT_ROT_CCW) {
+      CALL1(on_pet_rotation, (e == EVT_ROT_CW));
+      return;
+    }
+    if (e == EVT_CLICK) {
+      CALL0(on_exit_pet);
+      _enter(DISP_INFO); _v.infoPage = 0;
+      CALL0(invalidate_panel);
+      return;
+    }
+    if (e == EVT_DOUBLE) {
+      _enter(DISP_PET_STATS);
+      CALL0(invalidate_panel);
+      return;
+    }
+    if (e == EVT_LONG) {
+      CALL0(on_pet_long_press);
+      // _go_home() handles on_exit_pet since mode is still DISP_PET here.
+      _go_home();
+      return;
+    }
+  }
+
+  // --- Pet stats sub-page --------------------------------------------------
+  if (_v.mode == DISP_PET_STATS) {
+    if (e == EVT_CLICK || e == EVT_DOUBLE) {
+      _enter(DISP_PET);
+      CALL0(invalidate_panel);
+      return;
+    }
+    if (e == EVT_LONG) {
+      // _go_home() handles on_exit_pet since mode is still DISP_PET_STATS here.
+      _go_home();
+      return;
+    }
+    // Rotation is a no-op.
+    return;
+  }
+
+  // --- Info mode -----------------------------------------------------------
+  if (_v.mode == DISP_INFO) {
+    if (e == EVT_ROT_CW) {
+      _v.infoPage = (_v.infoPage + 1) % INFO_N;
+      CALL1(on_info_page_change, _v.infoPage);
+      CALL0(invalidate_panel);
+      return;
+    }
+    if (e == EVT_ROT_CCW) {
+      _v.infoPage = (_v.infoPage + INFO_N - 1) % INFO_N;
+      CALL1(on_info_page_change, _v.infoPage);
+      CALL0(invalidate_panel);
+      return;
+    }
+    if (e == EVT_CLICK || e == EVT_LONG) {
+      _go_home();
+      return;
+    }
+    return;
+  }
 
   // LONG from anywhere (except HOME) is "get out to home".
   if (e == EVT_LONG) {

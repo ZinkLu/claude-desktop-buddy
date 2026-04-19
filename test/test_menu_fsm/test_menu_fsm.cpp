@@ -18,6 +18,16 @@ struct MockCalls {
   int invalidate_clock;
   int invalidate_buddy;
   int invalidate_panel;
+  // NEW
+  int on_enter_pet;
+  int on_exit_pet;
+  int on_pet_rotation;
+  bool last_pet_rotation_cw;
+  int on_pet_long_press;
+  int on_info_page_change;
+  uint8_t last_info_page;
+  int on_hud_scroll_change;
+  uint8_t last_hud_scroll;
 };
 
 static MockCalls mock;
@@ -31,11 +41,19 @@ static void mk_transcript(bool on)              { mock.transcript_changed++; moc
 static void mk_invalidate_clock()               { mock.invalidate_clock++; }
 static void mk_invalidate_buddy()               { mock.invalidate_buddy++; }
 static void mk_invalidate_panel()               { mock.invalidate_panel++; }
+static void mk_on_enter_pet()                  { mock.on_enter_pet++; }
+static void mk_on_exit_pet()                   { mock.on_exit_pet++; }
+static void mk_on_pet_rotation(bool cw)        { mock.on_pet_rotation++; mock.last_pet_rotation_cw = cw; }
+static void mk_on_pet_long_press()             { mock.on_pet_long_press++; }
+static void mk_on_info_page_change(uint8_t p)  { mock.on_info_page_change++; mock.last_info_page = p; }
+static void mk_on_hud_scroll_change(uint8_t o) { mock.on_hud_scroll_change++; mock.last_hud_scroll = o; }
 
 static const FsmCallbacks CB = {
   mk_turn_off, mk_delete_char, mk_factory_reset, mk_toggle_demo,
   mk_brightness, mk_haptic, mk_transcript,
   mk_invalidate_clock, mk_invalidate_buddy, mk_invalidate_panel,
+  mk_on_enter_pet, mk_on_exit_pet, mk_on_pet_rotation,
+  mk_on_pet_long_press, mk_on_info_page_change, mk_on_hud_scroll_change,
 };
 
 // --- Host-side shim for settings().haptic / brightness / hud ------------
@@ -232,6 +250,8 @@ void test_prompt_force_home_respects_passkey() {
 }
 
 void test_help_and_about_from_menu() {
+  // Phase 2-B: menu help/about now route to DISP_INFO (pages 0/3).
+  // CLICK/LONG from DISP_INFO returns to DISP_HOME.
   input_fsm_dispatch(EVT_LONG, 1000);     // menu
   // help = item 3
   input_fsm_dispatch(EVT_ROT_CW, 1100);
@@ -239,16 +259,19 @@ void test_help_and_about_from_menu() {
   input_fsm_dispatch(EVT_ROT_CW, 1300);
   TEST_ASSERT_EQUAL(3, input_fsm_view().menuSel);
   input_fsm_dispatch(EVT_CLICK, 1400);
-  TEST_ASSERT_EQUAL(DISP_HELP, input_fsm_view().mode);
-  input_fsm_dispatch(EVT_CLICK, 1500);   // dismiss
-  TEST_ASSERT_EQUAL(DISP_MENU, input_fsm_view().mode);
-  // about = item 4
-  input_fsm_dispatch(EVT_ROT_CW, 1600);
+  TEST_ASSERT_EQUAL(DISP_INFO, input_fsm_view().mode);
+  TEST_ASSERT_EQUAL(0, input_fsm_view().infoPage);
+  input_fsm_dispatch(EVT_CLICK, 1500);   // dismiss -> home
+  TEST_ASSERT_EQUAL(DISP_HOME, input_fsm_view().mode);
+  // about = item 4 — navigate: home -> menu, scroll to 4
+  input_fsm_dispatch(EVT_LONG, 1600);
+  for (int i = 0; i < 4; i++) input_fsm_dispatch(EVT_ROT_CW, 1700 + i*100);
   TEST_ASSERT_EQUAL(4, input_fsm_view().menuSel);
-  input_fsm_dispatch(EVT_CLICK, 1700);
-  TEST_ASSERT_EQUAL(DISP_ABOUT, input_fsm_view().mode);
-  input_fsm_dispatch(EVT_LONG, 1800);
-  TEST_ASSERT_EQUAL(DISP_MENU, input_fsm_view().mode);
+  input_fsm_dispatch(EVT_CLICK, 2200);
+  TEST_ASSERT_EQUAL(DISP_INFO, input_fsm_view().mode);
+  TEST_ASSERT_EQUAL(3, input_fsm_view().infoPage);
+  input_fsm_dispatch(EVT_LONG, 2300);
+  TEST_ASSERT_EQUAL(DISP_HOME, input_fsm_view().mode);
 }
 
 void test_demo_stays_in_menu() {
@@ -259,6 +282,128 @@ void test_demo_stays_in_menu() {
   input_fsm_dispatch(EVT_CLICK, 2000);
   TEST_ASSERT_EQUAL(DISP_MENU, input_fsm_view().mode);  // stays
   TEST_ASSERT_EQUAL(1, mock.toggle_demo);
+}
+
+// --- Phase 2-B: home CLICK cycle + pet + info + HUD scroll -------------
+
+void test_home_click_enters_pet() {
+  input_fsm_dispatch(EVT_CLICK, 1000);
+  TEST_ASSERT_EQUAL(DISP_PET, input_fsm_view().mode);
+  TEST_ASSERT_EQUAL(1, mock.on_enter_pet);
+}
+
+void test_pet_click_enters_info_page0() {
+  input_fsm_dispatch(EVT_CLICK, 1000);  // home -> pet
+  input_fsm_dispatch(EVT_CLICK, 1100);  // pet -> info
+  TEST_ASSERT_EQUAL(DISP_INFO, input_fsm_view().mode);
+  TEST_ASSERT_EQUAL(0, input_fsm_view().infoPage);
+  TEST_ASSERT_EQUAL(1, mock.on_exit_pet);
+}
+
+void test_info_click_returns_home() {
+  input_fsm_dispatch(EVT_CLICK, 1000);  // home -> pet
+  input_fsm_dispatch(EVT_CLICK, 1100);  // pet -> info
+  input_fsm_dispatch(EVT_CLICK, 1200);  // info -> home
+  TEST_ASSERT_EQUAL(DISP_HOME, input_fsm_view().mode);
+}
+
+void test_info_rotation_pages() {
+  input_fsm_dispatch(EVT_CLICK, 1000);  // home -> pet
+  input_fsm_dispatch(EVT_CLICK, 1100);  // pet -> info (page 0)
+  input_fsm_dispatch(EVT_ROT_CW, 1200);
+  TEST_ASSERT_EQUAL(1, input_fsm_view().infoPage);
+  TEST_ASSERT_EQUAL(1, mock.on_info_page_change);
+  input_fsm_dispatch(EVT_ROT_CW, 1300);
+  input_fsm_dispatch(EVT_ROT_CW, 1400);
+  input_fsm_dispatch(EVT_ROT_CW, 1500);   // wraps 3 -> 0
+  TEST_ASSERT_EQUAL(0, input_fsm_view().infoPage);
+  input_fsm_dispatch(EVT_ROT_CCW, 1600);  // 0 -> 3 (reverse wrap)
+  TEST_ASSERT_EQUAL(3, input_fsm_view().infoPage);
+}
+
+void test_info_long_returns_home() {
+  input_fsm_dispatch(EVT_CLICK, 1000);  // -> pet
+  input_fsm_dispatch(EVT_CLICK, 1100);  // -> info
+  input_fsm_dispatch(EVT_LONG, 1200);
+  TEST_ASSERT_EQUAL(DISP_HOME, input_fsm_view().mode);
+}
+
+void test_pet_rotation_forwards_callback() {
+  input_fsm_dispatch(EVT_CLICK, 1000);     // -> pet
+  input_fsm_dispatch(EVT_ROT_CW, 1100);
+  TEST_ASSERT_EQUAL(1, mock.on_pet_rotation);
+  TEST_ASSERT_TRUE(mock.last_pet_rotation_cw);
+  input_fsm_dispatch(EVT_ROT_CCW, 1200);
+  TEST_ASSERT_EQUAL(2, mock.on_pet_rotation);
+  TEST_ASSERT_FALSE(mock.last_pet_rotation_cw);
+}
+
+void test_pet_double_enters_stats() {
+  input_fsm_dispatch(EVT_CLICK, 1000);   // -> pet
+  input_fsm_dispatch(EVT_DOUBLE, 1100);
+  TEST_ASSERT_EQUAL(DISP_PET_STATS, input_fsm_view().mode);
+}
+
+void test_pet_stats_click_returns_to_pet() {
+  input_fsm_dispatch(EVT_CLICK, 1000);   // -> pet
+  input_fsm_dispatch(EVT_DOUBLE, 1100);  // -> stats
+  input_fsm_dispatch(EVT_CLICK, 1200);
+  TEST_ASSERT_EQUAL(DISP_PET, input_fsm_view().mode);
+}
+
+void test_pet_long_press_triggers_squish_callback() {
+  input_fsm_dispatch(EVT_CLICK, 1000);  // -> pet
+  // LONG from pet normally means exit, but spec §5 + §3 table: Pet-mode
+  // LONG fires on_pet_long_press AND returns to home. So both effects.
+  input_fsm_dispatch(EVT_LONG, 1100);
+  TEST_ASSERT_EQUAL(1, mock.on_pet_long_press);
+  TEST_ASSERT_EQUAL(DISP_HOME, input_fsm_view().mode);
+  TEST_ASSERT_EQUAL(1, mock.on_exit_pet);
+}
+
+void test_home_rotation_scrolls_hud() {
+  input_fsm_dispatch(EVT_ROT_CW, 1000);
+  TEST_ASSERT_EQUAL(1, input_fsm_view().hudScroll);
+  TEST_ASSERT_EQUAL(1, mock.on_hud_scroll_change);
+  input_fsm_dispatch(EVT_ROT_CCW, 1100);
+  TEST_ASSERT_EQUAL(0, input_fsm_view().hudScroll);
+  // CCW below 0 clamps at 0.
+  input_fsm_dispatch(EVT_ROT_CCW, 1200);
+  TEST_ASSERT_EQUAL(0, input_fsm_view().hudScroll);
+}
+
+void test_home_hud_scroll_clamps_at_30() {
+  for (int i = 0; i < 35; i++) input_fsm_dispatch(EVT_ROT_CW, 1000 + i * 10);
+  TEST_ASSERT_EQUAL(30, input_fsm_view().hudScroll);
+}
+
+void test_menu_help_opens_info_page_0() {
+  input_fsm_dispatch(EVT_LONG, 1000);  // home -> menu
+  // 'help' is item 3; scroll to it
+  input_fsm_dispatch(EVT_ROT_CW, 1100);
+  input_fsm_dispatch(EVT_ROT_CW, 1200);
+  input_fsm_dispatch(EVT_ROT_CW, 1300);
+  TEST_ASSERT_EQUAL(3, input_fsm_view().menuSel);
+  input_fsm_dispatch(EVT_CLICK, 1400);
+  TEST_ASSERT_EQUAL(DISP_INFO, input_fsm_view().mode);
+  TEST_ASSERT_EQUAL(0, input_fsm_view().infoPage);
+}
+
+void test_menu_about_opens_info_page_3() {
+  input_fsm_dispatch(EVT_LONG, 1000);  // home -> menu
+  // 'about' is item 4
+  for (int i = 0; i < 4; i++) input_fsm_dispatch(EVT_ROT_CW, 1100 + i*100);
+  TEST_ASSERT_EQUAL(4, input_fsm_view().menuSel);
+  input_fsm_dispatch(EVT_CLICK, 1500);
+  TEST_ASSERT_EQUAL(DISP_INFO, input_fsm_view().mode);
+  TEST_ASSERT_EQUAL(3, input_fsm_view().infoPage);
+}
+
+void test_prompt_force_home_stops_pet() {
+  input_fsm_dispatch(EVT_CLICK, 1000);   // home -> pet
+  input_fsm_force_home_on_prompt();
+  TEST_ASSERT_EQUAL(DISP_HOME, input_fsm_view().mode);
+  TEST_ASSERT_EQUAL(1, mock.on_exit_pet);
 }
 
 int main() {
@@ -284,5 +429,19 @@ int main() {
   RUN_TEST(test_prompt_force_home_respects_passkey);
   RUN_TEST(test_help_and_about_from_menu);
   RUN_TEST(test_demo_stays_in_menu);
+  RUN_TEST(test_home_click_enters_pet);
+  RUN_TEST(test_pet_click_enters_info_page0);
+  RUN_TEST(test_info_click_returns_home);
+  RUN_TEST(test_info_rotation_pages);
+  RUN_TEST(test_info_long_returns_home);
+  RUN_TEST(test_pet_rotation_forwards_callback);
+  RUN_TEST(test_pet_double_enters_stats);
+  RUN_TEST(test_pet_stats_click_returns_to_pet);
+  RUN_TEST(test_pet_long_press_triggers_squish_callback);
+  RUN_TEST(test_home_rotation_scrolls_hud);
+  RUN_TEST(test_home_hud_scroll_clamps_at_30);
+  RUN_TEST(test_menu_help_opens_info_page_0);
+  RUN_TEST(test_menu_about_opens_info_page_3);
+  RUN_TEST(test_prompt_force_home_stops_pet);
   return UNITY_END();
 }

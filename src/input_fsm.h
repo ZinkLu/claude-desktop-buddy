@@ -11,6 +11,9 @@ enum DisplayMode {
   DISP_HELP,
   DISP_ABOUT,
   DISP_PASSKEY,
+  DISP_PET,
+  DISP_PET_STATS,
+  DISP_INFO,
 };
 
 // Side-effect callbacks the FSM invokes in response to menu actions.
@@ -32,6 +35,14 @@ struct FsmCallbacks {
   void (*invalidate_clock)();
   void (*invalidate_buddy)();
   void (*invalidate_panel)();   // repaint the active menu panel
+
+  // NEW in Phase 2-B
+  void (*on_enter_pet)();                      // greeting pulse, gesture reset
+  void (*on_exit_pet)();                       // bye pulse, stop purr
+  void (*on_pet_rotation)(bool cw);            // forwarded for gesture classifier
+  void (*on_pet_long_press)();                 // squish vibration
+  void (*on_info_page_change)(uint8_t page);   // repaint info page
+  void (*on_hud_scroll_change)(uint8_t ofs);   // repaint home HUD strip
 };
 
 // Snapshot of FSM state for renderers. All fields read-only from outside.
@@ -42,6 +53,8 @@ struct FsmView {
   uint8_t resetSel;
   uint8_t resetConfirmIdx;    // 0xFF if not armed
   uint32_t resetConfirmUntil; // millis() expiry; 0 if not armed
+  uint8_t infoPage;      // 0..3
+  uint8_t hudScroll;     // 0..30 (newest..oldest)
 };
 
 // API
