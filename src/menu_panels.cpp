@@ -97,7 +97,7 @@ void draw_settings() {
 void draw_reset() {
   _panel_title("RESET", HOT);
   const FsmView& v = input_fsm_view();
-  static const char* LABELS[3] = { "delete char", "factory reset", "back" };
+  static const char* LABELS[3] = { "delete pet", "factory reset", "back" };
   int y = 90;
   uint32_t now = millis();
   for (uint8_t i = 0; i < 3; i++) {

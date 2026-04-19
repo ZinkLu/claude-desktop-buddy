@@ -245,7 +245,10 @@ void loop() {
   }
 
   InputEvent e = hw_input_poll();
-  if (e != EVT_NONE) hw_motor_click_default();
+  // Fire motor bump only on rotation events. Open-loop pulse with no finger
+  // on the knob (i.e. during CLICK/LONG/DOUBLE) can freely spin the shaft
+  // since there's no hand resistance to absorb the torque.
+  if (e == EVT_ROT_CW || e == EVT_ROT_CCW) hw_motor_click_default();
 
   if (inPrompt) {
     switch (e) {

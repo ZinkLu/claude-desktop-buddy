@@ -128,7 +128,7 @@ void test_settings_brightness_cycles() {
   TEST_ASSERT_EQUAL(2, mock.brightness_changed);
 }
 
-void test_settings_back_returns_home() {
+void test_settings_back_returns_menu() {
   input_fsm_dispatch(EVT_LONG, 1000);     // menu
   input_fsm_dispatch(EVT_CLICK, 1100);    // settings
   // scroll to 'back' (item 4)
@@ -138,7 +138,8 @@ void test_settings_back_returns_home() {
   input_fsm_dispatch(EVT_ROT_CW, 1500);
   TEST_ASSERT_EQUAL(4, input_fsm_view().settingsSel);
   input_fsm_dispatch(EVT_CLICK, 1600);
-  TEST_ASSERT_EQUAL(DISP_HOME, input_fsm_view().mode);
+  TEST_ASSERT_EQUAL(DISP_MENU, input_fsm_view().mode);
+  TEST_ASSERT_EQUAL(0, input_fsm_view().menuSel);
 }
 
 void test_settings_long_returns_home() {
@@ -272,7 +273,7 @@ int main() {
   RUN_TEST(test_clock_long_returns_home);
   RUN_TEST(test_clock_rotation_is_noop);
   RUN_TEST(test_settings_brightness_cycles);
-  RUN_TEST(test_settings_back_returns_home);
+  RUN_TEST(test_settings_back_returns_menu);
   RUN_TEST(test_settings_long_returns_home);
   RUN_TEST(test_reset_arm_then_execute);
   RUN_TEST(test_reset_arm_expires);

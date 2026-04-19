@@ -79,7 +79,7 @@ static void _settings_click(uint8_t idx) {
     case 1: CALL1(haptic_changed, 0);     CALL0(invalidate_panel); break;
     case 2: CALL1(transcript_changed, false); CALL0(invalidate_panel); break;
     case 3: _enter(DISP_RESET); _v.resetSel = 0; _clear_reset_arm(); CALL0(invalidate_panel); break;
-    case 4: _go_home(); break;   // 'back' returns to home, not menu (per spec §4)
+    case 4: _enter(DISP_MENU); _v.menuSel = 0; CALL0(invalidate_panel); break;   // 'back' → main menu
     default: break;
   }
 }
