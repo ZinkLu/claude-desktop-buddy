@@ -138,13 +138,3 @@ void draw_pet_stats() {
 
   sp.pushSprite(0, 0);
 }
-
-__attribute__((weak)) uint8_t  pet_mood_tier()     { return 2; }
-__attribute__((weak)) uint8_t  pet_fed_progress()  { return 0; }
-__attribute__((weak)) uint8_t  pet_energy_tier()   { return 3; }
-__attribute__((weak)) uint8_t  pet_level()         { return 0; }
-__attribute__((weak)) uint16_t pet_approvals()     { return 0; }
-__attribute__((weak)) uint16_t pet_denials()       { return 0; }
-__attribute__((weak)) uint32_t pet_nap_seconds()   { return 0; }
-__attribute__((weak)) uint32_t pet_tokens_total()  { return 0; }
-__attribute__((weak)) uint32_t pet_tokens_today()  { return 0; }

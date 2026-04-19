@@ -154,14 +154,3 @@ void draw_info_page(uint8_t page) {
   }
   hw_display_sprite().pushSprite(0, 0);
 }
-
-// Temporary stubs so Task 4 builds standalone. Task 6's main.cpp provides
-// the real implementations; remove these stubs there.
-__attribute__((weak)) const char* info_bt_name()          { return "Claude-????"; }
-__attribute__((weak)) uint8_t     info_sessions_total()   { return 0; }
-__attribute__((weak)) uint8_t     info_sessions_running() { return 0; }
-__attribute__((weak)) uint8_t     info_sessions_waiting() { return 0; }
-__attribute__((weak)) uint32_t    info_last_msg_age_s()   { return 0; }
-__attribute__((weak)) const char* info_claude_state_name(){ return "idle"; }
-__attribute__((weak)) const char* info_bt_status()        { return "off"; }
-__attribute__((weak)) const char* info_scenario_name()    { return "none"; }
