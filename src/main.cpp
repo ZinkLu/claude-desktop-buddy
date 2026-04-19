@@ -222,17 +222,17 @@ static uint8_t wrapInto(const char* in, char out[][24], uint8_t maxRows, uint8_t
 
 static void drawHudSimple() {
   TFT_eSprite& sp = hw_display_sprite();
-  // HUD lives in the lower half of the visible circle (y=160..205).
-  // Three 12-px lines at y=164/178/192 fit inside the circle. Max char
-  // count per line is picked by the narrowest-row geometry:
-  // at y=192 the visible width is ~2*sqrt(120^2-72^2) = ~192 px, so at
-  // size-1 (6 px/char) ≈ 32 chars. We use 28 for a comfortable margin.
-  const int SHOW = 3;
-  const int TOP  = 160;
+  // HUD sits in the lower portion of the visible circle (y=150..208).
+  // With BUDDY_Y_BASE=40 the character body ends at y=146, leaving room
+  // for 4 lines of transcript at y=154/166/178/190 + a scroll indicator
+  // at the bottom. Narrowest row (y=190) visible width ~2*sqrt(120^2-70^2)
+  // ≈ 195 px ≈ 32 chars at size 1; use WIDTH=28 for margin.
+  const int SHOW = 4;
+  const int TOP  = 150;
   const int LH   = 12;
   const int WIDTH = 28;
 
-  sp.fillRect(0, TOP, 240, 52, TFT_BLACK);
+  sp.fillRect(0, TOP, 240, 60, TFT_BLACK);
   sp.setTextSize(1);
   sp.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
   sp.setTextDatum(MC_DATUM);
@@ -279,9 +279,11 @@ static void drawHudSimple() {
 static uint32_t petEnterMs = 0;
 static uint32_t petStrokeLastMs = 0;
 static uint32_t petStrokeTotalMs = 0;
+static uint32_t petFirstRotMs = 0;   // start of current rotation burst; 0 = idle
 static bool     petFellAsleep = false;
 static uint32_t petDizzyUntilMs = 0;
 static uint32_t petSquishUntilMs = 0;
+static const uint32_t PURR_DEBOUNCE_MS = 250;  // wait past tickle window before starting purr
 static const uint32_t PET_HINT_MS        = 3000;
 static const uint32_t PET_IDLE_MS        = 3000;
 static const uint32_t PET_MAX_STROKE_MS  = 30000;
@@ -292,6 +294,7 @@ static void cb_on_enter_pet() {
   petEnterMs = millis();
   petStrokeLastMs = 0;
   petStrokeTotalMs = 0;
+  petFirstRotMs = 0;
   petFellAsleep = false;
   petDizzyUntilMs = 0;
   petSquishUntilMs = 0;
@@ -305,20 +308,33 @@ static void cb_on_exit_pet() {
 }
 
 static void cb_on_pet_rotation(bool cw) {
-  PetGesture g = pet_gesture_step(cw ? EVT_ROT_CW : EVT_ROT_CCW, millis());
+  uint32_t now = millis();
+  PetGesture g = pet_gesture_step(cw ? EVT_ROT_CW : EVT_ROT_CCW, now);
   Serial.printf("[pet] rot=%s gesture=%d\n", cw ? "CW" : "CCW", (int)g);
   if (g == PGEST_STROKE) {
-    if (!hw_motor_purr_active()) {
-      hw_motor_purr_start(2);   // level 2 = strength 80; feels noticeably
+    // New rotation burst if we've been idle for half a second.
+    if (petFirstRotMs == 0 || now - petStrokeLastMs > 500) {
+      petFirstRotMs = now;
+    }
+    petStrokeLastMs = now;
+    petStrokeTotalMs += 200;
+    // Only start purr after PURR_DEBOUNCE_MS — gives tickle the chance
+    // to preempt if the user is actually spinning fast.
+    if (now - petFirstRotMs >= PURR_DEBOUNCE_MS && !hw_motor_purr_active()) {
+      hw_motor_purr_start(2);
       Serial.println("[pet] purr start");
     }
-    petStrokeLastMs = millis();
-    petStrokeTotalMs += 200;
   } else if (g == PGEST_TICKLE) {
-    hw_motor_purr_stop();   // kick and purr would fight the motor
-    hw_motor_kick(cw ? 1 : 0, settings().haptic + 1 > 4 ? 4 : settings().haptic + 1);
-    petDizzyUntilMs = millis() + PET_DIZZY_DURATION;
-    Serial.println("[pet] tickle kick");
+    // Tickle pre-empts a forming purr. Reset the burst so follow-up slow
+    // rotation won't keep petFirstRotMs stale.
+    petFirstRotMs = 0;
+    hw_motor_purr_stop();
+    // 3 rapid strong pulses = "stop that" annoyed buzz. Felt through the
+    // grip because it's a series of distinct shocks, not a single 40 ms
+    // pulse (which gets absorbed by the user's fingers).
+    hw_motor_pulse_series(3, 80, 4);
+    petDizzyUntilMs = now + PET_DIZZY_DURATION;
+    Serial.println("[pet] tickle buzz");
   }
 }
 
