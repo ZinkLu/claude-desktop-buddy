@@ -244,14 +244,17 @@ static void drawHudSimple() {
   uint8_t scroll = input_fsm_view().hudScroll;
 
   // Always paint the scroll indicator first (even with no transcript) so the
-  // user sees rotation feedback regardless of data state.
+  // user sees rotation feedback regardless of data state. Size-2 orange top
+  // of the HUD strip so it's clearly visible.
   auto drawIndicator = [&]() {
     if (scroll == 0) return;
     char b[6];
     snprintf(b, sizeof(b), "-%u", (unsigned)scroll);
+    sp.setTextSize(2);
     sp.setTextColor(TFT_ORANGE, TFT_BLACK);
     sp.setTextDatum(TR_DATUM);
-    sp.drawString(b, 210, TOP + 4);
+    sp.drawString(b, 220, TOP + 2);
+    sp.setTextSize(1);
     sp.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
     sp.setTextDatum(MC_DATUM);
   };
@@ -357,7 +360,7 @@ static void cb_on_pet_long_press() {
 }
 
 static void cb_on_info_page_change(uint8_t /*p*/)   { /* main loop repaints each frame */ }
-static void cb_on_hud_scroll_change(uint8_t /*o*/)  { /* main loop repaints each frame */ }
+static void cb_on_hud_scroll_change(uint8_t o) { Serial.printf("[hud] scroll=%u\n", o); }
 
 void setup() {
   hw_power_init();
