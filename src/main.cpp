@@ -190,8 +190,9 @@ static void drawApproval() {
 }
 
 // Greedy word-wrap into fixed-width rows. Continuation rows get a leading
-// space. Returns number of rows written.
-static uint8_t wrapInto(const char* in, char out[][24], uint8_t maxRows, uint8_t width) {
+// space. Returns number of rows written. Row buffer must be >= width + 1
+// bytes (the +1 is for the null terminator).
+static uint8_t wrapInto(const char* in, char out[][32], uint8_t maxRows, uint8_t width) {
   uint8_t row = 0, col = 0;
   const char* p = in;
   while (*p && row < maxRows) {
@@ -240,24 +241,39 @@ static void drawHudSimple() {
   sp.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
   sp.setTextDatum(MC_DATUM);
 
+  uint8_t scroll = input_fsm_view().hudScroll;
+
+  // Always paint the scroll indicator first (even with no transcript) so the
+  // user sees rotation feedback regardless of data state.
+  auto drawIndicator = [&]() {
+    if (scroll == 0) return;
+    char b[6];
+    snprintf(b, sizeof(b), "-%u", (unsigned)scroll);
+    sp.setTextColor(TFT_ORANGE, TFT_BLACK);
+    sp.setTextDatum(TR_DATUM);
+    sp.drawString(b, 210, TOP + 4);
+    sp.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    sp.setTextDatum(MC_DATUM);
+  };
+
   if (tama.nLines == 0) {
     const char* line = tama.msg;
     if (line && *line) {
       sp.drawString(line, 120, TOP + 20);
     }
+    drawIndicator();
     sp.setTextDatum(TL_DATUM);
     return;
   }
 
-  static char disp[32][24];
+  static char disp[32][32];
   uint8_t nDisp = 0;
   for (uint8_t i = 0; i < tama.nLines && nDisp < 32; i++) {
     uint8_t got = wrapInto(tama.lines[i], &disp[nDisp], 32 - nDisp, WIDTH);
     nDisp += got;
   }
-  if (nDisp == 0) { sp.setTextDatum(TL_DATUM); return; }
+  if (nDisp == 0) { drawIndicator(); sp.setTextDatum(TL_DATUM); return; }
 
-  uint8_t scroll = input_fsm_view().hudScroll;
   uint8_t maxBack = (nDisp > SHOW) ? (uint8_t)(nDisp - SHOW) : 0;
   if (scroll > maxBack) scroll = maxBack;
 
@@ -268,13 +284,7 @@ static void drawHudSimple() {
     sp.drawString(disp[start + i], 120, TOP + 4 + i * LH);
   }
 
-  if (scroll > 0) {
-    char b[6];
-    snprintf(b, sizeof(b), "-%u", (unsigned)scroll);
-    sp.setTextColor(TFT_ORANGE, TFT_BLACK);
-    sp.setTextDatum(TR_DATUM);
-    sp.drawString(b, 210, TOP + 4);
-  }
+  drawIndicator();
   sp.setTextDatum(TL_DATUM);
 }
 
