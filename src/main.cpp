@@ -284,6 +284,24 @@ static uint32_t petFirstRotMs = 0;   // start of current rotation burst; 0 = idl
 static bool     petFellAsleep = false;
 static uint32_t petDizzyUntilMs = 0;
 static uint32_t petSquishUntilMs = 0;
+
+// D2-A: Manual nap state
+static bool manualNapping = false;
+static uint32_t napStartMs = 0;
+static uint32_t napHintUntilMs = 0;
+
+// D2-A: Progressive long-press state
+enum LongPressState { LP_IDLE = 0, LP_CONFIRMING, LP_HINT_HOLD };
+static LongPressState lpState = LP_IDLE;
+static uint32_t lpStartMs = 0;
+static uint32_t lpHintHoldUntilMs = 0;
+static const uint32_t NAP_TRIGGER_DURATION_MS = 2400;  // Additional time after 600ms
+static const uint32_t NAP_HINT_DURATION_MS = 3000;
+static const uint32_t LP_HINT_HOLD_MS = 300;  // Show hint for 300ms after release
+
+// D3: Level-up celebrate state
+static uint32_t celebrateUntilMs = 0;
+
 static const uint32_t PURR_DEBOUNCE_MS = 250;  // wait past tickle window before starting purr
 static const uint32_t PET_HINT_MS        = 3000;
 static const uint32_t PET_IDLE_MS        = 3000;
@@ -348,9 +366,9 @@ static void cb_on_info_page_change(uint8_t /*p*/)   { /* main loop repaints each
 static void cb_on_hud_scroll_change(uint8_t /*o*/) { /* main loop repaints */ }
 
 static void cb_on_scroll_edge(bool /*cw*/) {
-  // Hard edge "wall bump" — two rapid strong reverse pulses so the user
-  // feels the knob push back against their finger.
-  hw_motor_pulse_series(2, 50, 4);
+  // Hard edge "wall bump" — three distinct strong pulses with longer gap
+  // so the user clearly feels the boundary push-back.
+  hw_motor_pulse_series(3, 80, 4);
 }
 
 void setup() {
@@ -410,8 +428,90 @@ void loop() {
   static bool firstFrame = true;
   uint32_t now = millis();
 
+  // D2-A: Manual nap state takes precedence
+  if (manualNapping) {
+    InputEvent e = hw_input_poll();
+    // Any input wakes from nap
+    if (e != EVT_NONE) {
+      manualNapping = false;
+      uint32_t napDurationMs = now - napStartMs;
+      statsOnNapEnd(napDurationMs / 1000);
+      statsOnWake();
+      hw_display_set_brightness((settings().brightness + 1) * 20);
+      hw_motor_click_default();
+      Serial.printf("[nap] woke after %lu seconds\n", (unsigned long)(napDurationMs / 1000));
+    } else {
+      // Render nap screen
+      TFT_eSprite& sp = hw_display_sprite();
+      if (firstFrame) { sp.fillSprite(TFT_BLACK); firstFrame = false; }
+      hw_display_set_brightness(20);  // 10% brightness
+      buddyTick((uint8_t)P_SLEEP);
+      if (now < napHintUntilMs) {
+        sp.setTextDatum(MC_DATUM);
+        sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
+        sp.setTextSize(1);
+        sp.drawString("Rotate or Click", 120, 58);
+        sp.drawString("to wake", 120, 70);
+        sp.setTextDatum(TL_DATUM);
+      }
+      sp.pushSprite(0, 0);
+      hw_motor_tick(now);
+      delay(50);
+      return;
+    }
+  }
+
+  // D2-A: Check progressive long-press confirmation mode
+  if (lpState == LP_CONFIRMING) {
+    if (!hw_input_button_pressed()) {
+      // Button released before 3s total
+      // Enter hint-hold mode to show prompt for 300ms before executing menu
+      lpState = LP_HINT_HOLD;
+      lpHintHoldUntilMs = now + LP_HINT_HOLD_MS;
+      Serial.println("[long-press] released, showing hint");
+    } else if (now - lpStartMs >= NAP_TRIGGER_DURATION_MS) {
+      // Held for 3s total (600ms + 2400ms), trigger nap
+      lpState = LP_IDLE;
+      manualNapping = true;
+      napStartMs = now;
+      napHintUntilMs = now + NAP_HINT_DURATION_MS;
+      hw_motor_pulse_series(2, 100, 2);
+      Serial.println("[nap] manual nap triggered");
+    }
+  } else if (lpState == LP_HINT_HOLD) {
+    if (now >= lpHintHoldUntilMs) {
+      // Hint display time over, execute menu
+      lpState = LP_IDLE;
+      input_fsm_dispatch(EVT_LONG, now);
+      Serial.println("[long-press] menu opened");
+    }
+    // If button pressed again during hint hold, cancel and go back to confirming
+    if (hw_input_button_pressed()) {
+      lpState = LP_CONFIRMING;
+      Serial.println("[long-press] re-pressed");
+    }
+  }
+
   dataPoll(&tama);
-  activeState = derive(tama);
+
+  // D3: Check for level-up and trigger celebrate
+  if (statsPollLevelUp()) {
+    celebrateUntilMs = now + 3000;  // 3 second celebrate
+    hw_motor_wiggle();
+    hw_motor_pulse_series(3, 100, settings().haptic);
+    Serial.println("[celebrate] level up!");
+  }
+
+  // D3: Handle celebrate state
+  if (celebrateUntilMs > 0) {
+    if (now >= celebrateUntilMs) {
+      celebrateUntilMs = 0;
+    } else {
+      activeState = P_CELEBRATE;
+    }
+  } else {
+    activeState = derive(tama);
+  }
 
   static uint32_t lastPasskey = 0;
   uint32_t pk = blePasskey();
@@ -473,7 +573,17 @@ void loop() {
       default: break;
     }
   } else {
-    input_fsm_dispatch(e, now);
+    // D2-A: Progressive long-press for home mode
+    // Only trigger when no prompt is active (prompt has priority)
+    if (e == EVT_LONG && input_fsm_view().mode == DISP_HOME && lpState == LP_IDLE && !inPrompt) {
+      lpState = LP_CONFIRMING;
+      lpStartMs = now;
+      hw_motor_click(40);  // Soft acknowledgement pulse
+      Serial.println("[long-press] confirmation mode");
+    } else if (lpState != LP_CONFIRMING) {
+      // Normal dispatch when not in confirmation mode
+      input_fsm_dispatch(e, now);
+    }
     switch (e) {
       case EVT_ROT_CW:  Serial.println("CW");     break;
       case EVT_ROT_CCW: Serial.println("CCW");    break;
@@ -542,6 +652,17 @@ void loop() {
         sp.setTextDatum(MC_DATUM);
         sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
         sp.drawString("no character", 120, 120);
+        sp.setTextDatum(TL_DATUM);
+      }
+      // D2-A: Show progressive long-press hint.
+      // Position at y=65 — far enough from the circular top edge so the
+      // text stays fully visible on the 240×240 round LCD (GC9A01).
+      if ((lpState == LP_CONFIRMING || lpState == LP_HINT_HOLD) && !inPrompt) {
+        sp.setTextDatum(MC_DATUM);
+        sp.setTextColor(TFT_WHITE, TFT_BLACK);
+        sp.setTextSize(1);
+        sp.drawString("Release = Menu", 120, 58);
+        sp.drawString("Hold = Nap",     120, 70);
         sp.setTextDatum(TL_DATUM);
       }
       if (inPrompt)            drawApproval();    // approvals always show
