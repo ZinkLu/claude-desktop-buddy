@@ -12,6 +12,7 @@ enum InputEvent {
 
 void       hw_input_init();
 InputEvent hw_input_poll();   // Returns one pending event, or EVT_NONE
+bool       hw_input_button_pressed();  // True if button is currently held
 
 // Internal helpers, exposed for unit tests.
 namespace hw_input_internal {

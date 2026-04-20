@@ -168,4 +168,8 @@ InputEvent hw_input_poll() {
   InputEvent be = hw_input_internal::buttonStep(_btn, pressed, now);
   return be;
 }
+
+bool hw_input_button_pressed() {
+  return (digitalRead(BTN_PIN) == LOW);
+}
 #endif

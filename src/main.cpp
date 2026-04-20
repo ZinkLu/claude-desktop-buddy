@@ -284,6 +284,22 @@ static uint32_t petFirstRotMs = 0;   // start of current rotation burst; 0 = idl
 static bool     petFellAsleep = false;
 static uint32_t petDizzyUntilMs = 0;
 static uint32_t petSquishUntilMs = 0;
+
+// D2-A: Manual nap state
+static bool manualNapping = false;
+static uint32_t napStartMs = 0;
+static uint32_t napHintUntilMs = 0;
+
+// D2-A: Progressive long-press state
+enum LongPressState { LP_IDLE = 0, LP_CONFIRMING };
+static LongPressState lpState = LP_IDLE;
+static uint32_t lpStartMs = 0;
+static const uint32_t NAP_TRIGGER_DURATION_MS = 2400;  // Additional time after 600ms
+static const uint32_t NAP_HINT_DURATION_MS = 3000;
+
+// D3: Level-up celebrate state
+static uint32_t celebrateUntilMs = 0;
+
 static const uint32_t PURR_DEBOUNCE_MS = 250;  // wait past tickle window before starting purr
 static const uint32_t PET_HINT_MS        = 3000;
 static const uint32_t PET_IDLE_MS        = 3000;
@@ -410,8 +426,84 @@ void loop() {
   static bool firstFrame = true;
   uint32_t now = millis();
 
+  // D2-A: Manual nap state takes precedence
+  if (manualNapping) {
+    InputEvent e = hw_input_poll();
+    // Any input wakes from nap
+    if (e != EVT_NONE) {
+      manualNapping = false;
+      uint32_t napDurationMs = now - napStartMs;
+      statsOnNapEnd(napDurationMs / 1000);
+      statsOnWake();
+      hw_display_set_brightness((settings().brightness + 1) * 20);
+      hw_motor_click_default();
+      Serial.printf("[nap] woke after %lu seconds\n", (unsigned long)(napDurationMs / 1000));
+    } else {
+      // Render nap screen
+      TFT_eSprite& sp = hw_display_sprite();
+      if (firstFrame) { sp.fillSprite(TFT_BLACK); firstFrame = false; }
+      hw_display_set_brightness(20);  // 10% brightness
+      buddyTick((uint8_t)P_SLEEP);
+      if (now < napHintUntilMs) {
+        sp.setTextDatum(MC_DATUM);
+        sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
+        sp.setTextSize(1);
+        sp.drawString("转动或点击唤醒", 120, 220);
+        sp.setTextDatum(TL_DATUM);
+      }
+      sp.pushSprite(0, 0);
+      hw_motor_tick(now);
+      delay(50);
+      return;
+    }
+  }
+
+  // D2-A: Check progressive long-press confirmation mode
+  if (lpState == LP_CONFIRMING) {
+    if (!hw_input_button_pressed()) {
+      // Button released before 3s total, execute menu
+      lpState = LP_IDLE;
+      // Manually trigger menu since we consumed the LONG event
+      const FsmView& v = input_fsm_view();
+      if (v.mode == DISP_HOME) {
+        // Use FSM to enter menu
+        extern DisplayMode _v_mode;  // Access FSM internal state
+        // Actually, let's call input_fsm_dispatch with a simulated LONG
+        // But we need to bypass the check... 
+        // Simpler: directly enter menu
+        input_fsm_dispatch(EVT_LONG, now);
+      }
+    } else if (now - lpStartMs >= NAP_TRIGGER_DURATION_MS) {
+      // Held for 3s total (600ms + 2400ms), trigger nap
+      lpState = LP_IDLE;
+      manualNapping = true;
+      napStartMs = now;
+      napHintUntilMs = now + NAP_HINT_DURATION_MS;
+      hw_motor_pulse_series(2, 100, 2);
+      Serial.println("[nap] manual nap triggered");
+    }
+  }
+
   dataPoll(&tama);
-  activeState = derive(tama);
+
+  // D3: Check for level-up and trigger celebrate
+  if (statsPollLevelUp()) {
+    celebrateUntilMs = now + 3000;  // 3 second celebrate
+    hw_motor_wiggle();
+    hw_motor_pulse_series(3, 100, settings().haptic);
+    Serial.println("[celebrate] level up!");
+  }
+
+  // D3: Handle celebrate state
+  if (celebrateUntilMs > 0) {
+    if (now >= celebrateUntilMs) {
+      celebrateUntilMs = 0;
+    } else {
+      activeState = P_CELEBRATE;
+    }
+  } else {
+    activeState = derive(tama);
+  }
 
   static uint32_t lastPasskey = 0;
   uint32_t pk = blePasskey();
@@ -473,7 +565,16 @@ void loop() {
       default: break;
     }
   } else {
-    input_fsm_dispatch(e, now);
+    // D2-A: Progressive long-press for home mode
+    if (e == EVT_LONG && input_fsm_view().mode == DISP_HOME && lpState == LP_IDLE) {
+      lpState = LP_CONFIRMING;
+      lpStartMs = now;
+      hw_motor_click(40);  // Soft acknowledgement pulse
+      Serial.println("[long-press] confirmation mode");
+    } else if (lpState != LP_CONFIRMING) {
+      // Normal dispatch when not in confirmation mode
+      input_fsm_dispatch(e, now);
+    }
     switch (e) {
       case EVT_ROT_CW:  Serial.println("CW");     break;
       case EVT_ROT_CCW: Serial.println("CCW");    break;
@@ -542,6 +643,14 @@ void loop() {
         sp.setTextDatum(MC_DATUM);
         sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
         sp.drawString("no character", 120, 120);
+        sp.setTextDatum(TL_DATUM);
+      }
+      // D2-A: Show progressive long-press hint
+      if (lpState == LP_CONFIRMING) {
+        sp.setTextDatum(MC_DATUM);
+        sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
+        sp.setTextSize(1);
+        sp.drawString("松手=菜单 | 继续=休眠", 120, 200);
         sp.setTextDatum(TL_DATUM);
       }
       if (inPrompt)            drawApproval();    // approvals always show
