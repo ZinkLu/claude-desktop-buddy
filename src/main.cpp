@@ -291,11 +291,13 @@ static uint32_t napStartMs = 0;
 static uint32_t napHintUntilMs = 0;
 
 // D2-A: Progressive long-press state
-enum LongPressState { LP_IDLE = 0, LP_CONFIRMING };
+enum LongPressState { LP_IDLE = 0, LP_CONFIRMING, LP_HINT_HOLD };
 static LongPressState lpState = LP_IDLE;
 static uint32_t lpStartMs = 0;
+static uint32_t lpHintHoldUntilMs = 0;
 static const uint32_t NAP_TRIGGER_DURATION_MS = 2400;  // Additional time after 600ms
 static const uint32_t NAP_HINT_DURATION_MS = 3000;
+static const uint32_t LP_HINT_HOLD_MS = 300;  // Show hint for 300ms after release
 
 // D3: Level-up celebrate state
 static uint32_t celebrateUntilMs = 0;
@@ -461,18 +463,11 @@ void loop() {
   // D2-A: Check progressive long-press confirmation mode
   if (lpState == LP_CONFIRMING) {
     if (!hw_input_button_pressed()) {
-      // Button released before 3s total, execute menu
-      lpState = LP_IDLE;
-      // Manually trigger menu since we consumed the LONG event
-      const FsmView& v = input_fsm_view();
-      if (v.mode == DISP_HOME) {
-        // Use FSM to enter menu
-        extern DisplayMode _v_mode;  // Access FSM internal state
-        // Actually, let's call input_fsm_dispatch with a simulated LONG
-        // But we need to bypass the check... 
-        // Simpler: directly enter menu
-        input_fsm_dispatch(EVT_LONG, now);
-      }
+      // Button released before 3s total
+      // Enter hint-hold mode to show prompt for 300ms before executing menu
+      lpState = LP_HINT_HOLD;
+      lpHintHoldUntilMs = now + LP_HINT_HOLD_MS;
+      Serial.println("[long-press] released, showing hint");
     } else if (now - lpStartMs >= NAP_TRIGGER_DURATION_MS) {
       // Held for 3s total (600ms + 2400ms), trigger nap
       lpState = LP_IDLE;
@@ -481,6 +476,18 @@ void loop() {
       napHintUntilMs = now + NAP_HINT_DURATION_MS;
       hw_motor_pulse_series(2, 100, 2);
       Serial.println("[nap] manual nap triggered");
+    }
+  } else if (lpState == LP_HINT_HOLD) {
+    if (now >= lpHintHoldUntilMs) {
+      // Hint display time over, execute menu
+      lpState = LP_IDLE;
+      input_fsm_dispatch(EVT_LONG, now);
+      Serial.println("[long-press] menu opened");
+    }
+    // If button pressed again during hint hold, cancel and go back to confirming
+    if (hw_input_button_pressed()) {
+      lpState = LP_CONFIRMING;
+      Serial.println("[long-press] re-pressed");
     }
   }
 
@@ -645,8 +652,8 @@ void loop() {
         sp.drawString("no character", 120, 120);
         sp.setTextDatum(TL_DATUM);
       }
-      // D2-A: Show progressive long-press hint
-      if (lpState == LP_CONFIRMING) {
+      // D2-A: Show progressive long-press hint (also in hint-hold state)
+      if (lpState == LP_CONFIRMING || lpState == LP_HINT_HOLD) {
         sp.setTextDatum(MC_DATUM);
         sp.setTextColor(TFT_WHITE, TFT_BLACK);
         sp.setTextSize(1);

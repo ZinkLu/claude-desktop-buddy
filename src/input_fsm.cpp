@@ -237,32 +237,16 @@ void input_fsm_dispatch(InputEvent e, uint32_t now_ms) {
   // Rotation
   if (e == EVT_ROT_CW || e == EVT_ROT_CCW) {
     int dir = (e == EVT_ROT_CW) ? 1 : -1;
-    bool cw = (e == EVT_ROT_CW);
     switch (_v.mode) {
       case DISP_MENU:
-        if (cw && _v.menuSel == MENU_N - 1) {
-          CALL1(on_scroll_edge, true);
-        } else if (!cw && _v.menuSel == 0) {
-          CALL1(on_scroll_edge, false);
-        }
         _v.menuSel = (uint8_t)((_v.menuSel + dir + MENU_N) % MENU_N);
         CALL0(invalidate_panel);
         return;
       case DISP_SETTINGS:
-        if (cw && _v.settingsSel == SETTINGS_N - 1) {
-          CALL1(on_scroll_edge, true);
-        } else if (!cw && _v.settingsSel == 0) {
-          CALL1(on_scroll_edge, false);
-        }
         _v.settingsSel = (uint8_t)((_v.settingsSel + dir + SETTINGS_N) % SETTINGS_N);
         CALL0(invalidate_panel);
         return;
       case DISP_RESET:
-        if (cw && _v.resetSel == RESET_N - 1) {
-          CALL1(on_scroll_edge, true);
-        } else if (!cw && _v.resetSel == 0) {
-          CALL1(on_scroll_edge, false);
-        }
         _v.resetSel = (uint8_t)((_v.resetSel + dir + RESET_N) % RESET_N);
         _clear_reset_arm();  // scrolling cancels arm
         CALL0(invalidate_panel);
