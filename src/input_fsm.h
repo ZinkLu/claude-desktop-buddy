@@ -11,6 +11,9 @@ enum DisplayMode {
   DISP_HELP,
   DISP_ABOUT,
   DISP_PASSKEY,
+  DISP_PET,
+  DISP_PET_STATS,
+  DISP_INFO,
 };
 
 // Side-effect callbacks the FSM invokes in response to menu actions.
@@ -32,6 +35,15 @@ struct FsmCallbacks {
   void (*invalidate_clock)();
   void (*invalidate_buddy)();
   void (*invalidate_panel)();   // repaint the active menu panel
+
+  // NEW in Phase 2-B
+  void (*on_enter_pet)();                      // greeting pulse, gesture reset
+  void (*on_exit_pet)();                       // bye pulse, stop purr
+  void (*on_pet_rotation)(bool cw);            // forwarded for gesture classifier
+  void (*on_pet_long_press)();                 // squish vibration
+  void (*on_info_page_change)(uint8_t page);   // repaint info page
+  void (*on_hud_scroll_change)(uint8_t ofs);   // repaint home HUD strip
+  void (*on_scroll_edge)(bool cw);             // HUD scroll hit end; main fires "wall bump"
 };
 
 // Snapshot of FSM state for renderers. All fields read-only from outside.
@@ -42,6 +54,8 @@ struct FsmView {
   uint8_t resetSel;
   uint8_t resetConfirmIdx;    // 0xFF if not armed
   uint32_t resetConfirmUntil; // millis() expiry; 0 if not armed
+  uint8_t infoPage;      // 0..3
+  uint8_t hudScroll;     // 0..30 (newest..oldest)
 };
 
 // API
@@ -50,6 +64,10 @@ void input_fsm_dispatch(InputEvent e, uint32_t now_ms);
 void input_fsm_tick(uint32_t now_ms);    // clears expired reset arm; called each main loop
 void input_fsm_on_passkey_change(bool active);  // called when blePasskey() (non-)zero transitions
 void input_fsm_force_home_on_prompt();
+// Main supplies the current real maximum hudScroll based on transcript
+// line count. FSM caps hudScroll at this value so rotation can't exceed
+// "no more history" — user sees -N stop advancing when they hit the end.
+void input_fsm_set_hud_scroll_max(uint8_t max);
 const FsmView& input_fsm_view();
 
 // Internal helpers exposed for unit tests only.

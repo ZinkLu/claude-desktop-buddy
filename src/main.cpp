@@ -13,6 +13,9 @@
 #include "stats.h"         // header-only; include once
 #include "input_fsm.h"
 #include "menu_panels.h"
+#include "info_pages.h"
+#include "pet_pages.h"
+#include "pet_gesture.h"
 
 enum PersonaState { P_SLEEP, P_IDLE, P_BUSY, P_ATTENTION, P_CELEBRATE, P_DIZZY, P_HEART };
 
@@ -36,6 +39,35 @@ uint8_t panel_brightness()     { return settings().brightness; }
 uint8_t panel_haptic()         { return settings().haptic; }
 bool    panel_transcript_on()  { return settings().hud; }
 bool    panel_data_demo()      { return dataDemo(); }
+
+// Info page bridges
+const char* info_bt_name()              { return btName; }
+uint8_t     info_sessions_total()       { return tama.sessionsTotal; }
+uint8_t     info_sessions_running()     { return tama.sessionsRunning; }
+uint8_t     info_sessions_waiting()     { return tama.sessionsWaiting; }
+uint32_t    info_last_msg_age_s()       { return (millis() - tama.lastUpdated) / 1000; }
+const char* info_claude_state_name() {
+  static const char* names[] = {"sleep","idle","busy","attention","celebrate","dizzy","heart"};
+  return names[(uint8_t)activeState < 7 ? (uint8_t)activeState : 1];
+}
+const char* info_bt_status() {
+  if (!settings().bt) return "off";
+  if (dataBtActive())  return "linked";
+  if (bleConnected())  return "discover";
+  return "off";
+}
+const char* info_scenario_name()        { return dataScenarioName(); }
+
+// Pet page bridges (stats.h accessors live in main's TU)
+uint8_t  pet_mood_tier()    { return statsMoodTier(); }
+uint8_t  pet_fed_progress() { return statsFedProgress(); }
+uint8_t  pet_energy_tier()  { return statsEnergyTier(); }
+uint8_t  pet_level()        { return stats().level; }
+uint16_t pet_approvals()    { return stats().approvals; }
+uint16_t pet_denials()      { return stats().denials; }
+uint32_t pet_nap_seconds()  { return stats().napSeconds; }
+uint32_t pet_tokens_total() { return stats().tokens; }
+uint32_t pet_tokens_today() { return tama.tokensToday; }
 
 // Main owns the "cycle this setting to its next value" logic; input_fsm
 // just tells us "user clicked brightness / haptic / transcript". This
@@ -129,8 +161,9 @@ static void drawApproval() {
   TFT_eSprite& sp = hw_display_sprite();
   uint16_t bg = TFT_BLACK;
 
-  // Bottom panel y=160..220
-  sp.fillRect(0, 160, 240, 60, bg);
+  // Bottom panel. Clear y=148..220 — same region HUD uses, so transitioning
+  // between HUD and approval never leaves stale pixels at the boundary.
+  sp.fillRect(0, 148, 240, 72, bg);
   sp.drawFastHLine(24, 160, 192, TFT_DARKGREY);
 
   sp.setTextDatum(TL_DATUM);
@@ -156,15 +189,168 @@ static void drawApproval() {
   else                { sp.setTextColor(TFT_DARKGREY, bg);  sp.print("  deny"); }
 }
 
+// Greedy word-wrap into fixed-width rows. Continuation rows get a leading
+// space. Returns number of rows written. Row buffer must be >= width + 1
+// bytes (the +1 is for the null terminator).
+static uint8_t wrapInto(const char* in, char out[][32], uint8_t maxRows, uint8_t width) {
+  uint8_t row = 0, col = 0;
+  const char* p = in;
+  while (*p && row < maxRows) {
+    while (*p == ' ') p++;
+    const char* w = p;
+    while (*p && *p != ' ') p++;
+    uint8_t wlen = p - w;
+    if (wlen == 0) break;
+    uint8_t need = (col > 0 ? 1 : 0) + wlen;
+    if (col + need > width) {
+      out[row][col] = 0;
+      if (++row >= maxRows) return row;
+      out[row][0] = ' '; col = 1;
+    }
+    if (col > 1 || (col == 1 && out[row][0] != ' ')) out[row][col++] = ' ';
+    else if (col == 1 && row > 0) {}
+    while (wlen > width - col) {
+      uint8_t take = width - col;
+      memcpy(&out[row][col], w, take); col += take; w += take; wlen -= take;
+      out[row][col] = 0;
+      if (++row >= maxRows) return row;
+      out[row][0] = ' '; col = 1;
+    }
+    memcpy(&out[row][col], w, wlen); col += wlen;
+  }
+  if (col > 0 && row < maxRows) { out[row][col] = 0; row++; }
+  return row;
+}
+
 static void drawHudSimple() {
   TFT_eSprite& sp = hw_display_sprite();
-  sp.fillRect(0, 165, 240, 40, TFT_BLACK);
-  sp.setTextDatum(MC_DATUM);
+  // HUD sits in the lower portion of the visible circle (y=150..208).
+  // With BUDDY_Y_BASE=40 the character body ends at y=146, leaving room
+  // for 4 lines of transcript at y=154/166/178/190. Narrowest row (y=190)
+  // visible width ~2*sqrt(120^2-70^2) ≈ 195 px ≈ 32 chars at size 1;
+  // WIDTH=28 for margin. Scroll position is conveyed by the motor
+  // edge-bump at the boundaries, no visual indicator needed.
+  const int SHOW = 4;
+  const int TOP  = 150;
+  const int LH   = 12;
+  const int WIDTH = 28;
+
+  // Clear y=148..220 — matches drawApproval's region so switching between
+  // HUD and approval never leaves stale pixels at the boundary.
+  sp.fillRect(0, 148, 240, 72, TFT_BLACK);
   sp.setTextSize(1);
   sp.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-  const char* line = tama.nLines ? tama.lines[tama.nLines - 1] : tama.msg;
-  if (line && *line) sp.drawString(line, 120, 185);
+  sp.setTextDatum(MC_DATUM);
+
+  if (tama.nLines == 0) {
+    input_fsm_set_hud_scroll_max(0);
+    const char* line = tama.msg;
+    if (line && *line) sp.drawString(line, 120, TOP + 20);
+    sp.setTextDatum(TL_DATUM);
+    return;
+  }
+
+  static char disp[32][32];
+  uint8_t nDisp = 0;
+  for (uint8_t i = 0; i < tama.nLines && nDisp < 32; i++) {
+    uint8_t got = wrapInto(tama.lines[i], &disp[nDisp], 32 - nDisp, WIDTH);
+    nDisp += got;
+  }
+  if (nDisp == 0) {
+    input_fsm_set_hud_scroll_max(0);
+    sp.setTextDatum(TL_DATUM);
+    return;
+  }
+
+  uint8_t maxBack = (nDisp > SHOW) ? (uint8_t)(nDisp - SHOW) : 0;
+  input_fsm_set_hud_scroll_max(maxBack);
+  uint8_t scroll = input_fsm_view().hudScroll;
+
+  int end = (int)nDisp - scroll;
+  int start = end - SHOW; if (start < 0) start = 0;
+
+  for (int i = 0; start + i < end; i++) {
+    sp.drawString(disp[start + i], 120, TOP + 4 + i * LH);
+  }
+
   sp.setTextDatum(TL_DATUM);
+}
+
+// Pet mode runtime state
+static uint32_t petEnterMs = 0;
+static uint32_t petStrokeLastMs = 0;
+static uint32_t petStrokeTotalMs = 0;
+static uint32_t petFirstRotMs = 0;   // start of current rotation burst; 0 = idle
+static bool     petFellAsleep = false;
+static uint32_t petDizzyUntilMs = 0;
+static uint32_t petSquishUntilMs = 0;
+static const uint32_t PURR_DEBOUNCE_MS = 250;  // wait past tickle window before starting purr
+static const uint32_t PET_HINT_MS        = 3000;
+static const uint32_t PET_IDLE_MS        = 3000;
+static const uint32_t PET_MAX_STROKE_MS  = 30000;
+static const uint32_t PET_DIZZY_DURATION = 1000;
+static const uint32_t PET_SQUISH_DURATION = 800;
+
+static void cb_on_enter_pet() {
+  petEnterMs = millis();
+  petStrokeLastMs = 0;
+  petStrokeTotalMs = 0;
+  petFirstRotMs = 0;
+  petFellAsleep = false;
+  petDizzyUntilMs = 0;
+  petSquishUntilMs = 0;
+  pet_gesture_reset();
+  hw_motor_pulse_series(3, 100, settings().haptic);
+}
+
+static void cb_on_exit_pet() {
+  hw_motor_purr_stop();
+  hw_motor_pulse_series(2, 80, settings().haptic);
+}
+
+static void cb_on_pet_rotation(bool cw) {
+  uint32_t now = millis();
+  PetGesture g = pet_gesture_step(cw ? EVT_ROT_CW : EVT_ROT_CCW, now);
+  Serial.printf("[pet] rot=%s gesture=%d\n", cw ? "CW" : "CCW", (int)g);
+  if (g == PGEST_STROKE) {
+    // New rotation burst if we've been idle for half a second.
+    if (petFirstRotMs == 0 || now - petStrokeLastMs > 500) {
+      petFirstRotMs = now;
+    }
+    petStrokeLastMs = now;
+    petStrokeTotalMs += 200;
+    // Only start purr after PURR_DEBOUNCE_MS — gives tickle the chance
+    // to preempt if the user is actually spinning fast.
+    if (now - petFirstRotMs >= PURR_DEBOUNCE_MS && !hw_motor_purr_active()) {
+      hw_motor_purr_start(2);
+      Serial.println("[pet] purr start");
+    }
+  } else if (g == PGEST_TICKLE) {
+    // Tickle pre-empts a forming purr. Reset the burst so follow-up slow
+    // rotation won't keep petFirstRotMs stale.
+    petFirstRotMs = 0;
+    hw_motor_purr_stop();
+    // 3 rapid strong pulses = "stop that" annoyed buzz. Felt through the
+    // grip because it's a series of distinct shocks, not a single 40 ms
+    // pulse (which gets absorbed by the user's fingers).
+    hw_motor_pulse_series(3, 80, 4);
+    petDizzyUntilMs = now + PET_DIZZY_DURATION;
+    Serial.println("[pet] tickle buzz");
+  }
+}
+
+static void cb_on_pet_long_press() {
+  hw_motor_vibrate(PET_SQUISH_DURATION, settings().haptic);
+  petSquishUntilMs = millis() + PET_SQUISH_DURATION;
+}
+
+static void cb_on_info_page_change(uint8_t /*p*/)   { /* main loop repaints each frame */ }
+static void cb_on_hud_scroll_change(uint8_t /*o*/) { /* main loop repaints */ }
+
+static void cb_on_scroll_edge(bool /*cw*/) {
+  // Hard edge "wall bump" — two rapid strong reverse pulses so the user
+  // feels the knob push back against their finger.
+  hw_motor_pulse_series(2, 50, 4);
 }
 
 void setup() {
@@ -202,6 +388,13 @@ void setup() {
     clock_face_invalidate,
     buddyInvalidate,
     invalidate_panel_cb,
+    cb_on_enter_pet,
+    cb_on_exit_pet,
+    cb_on_pet_rotation,
+    cb_on_pet_long_press,
+    cb_on_info_page_change,
+    cb_on_hud_scroll_change,
+    cb_on_scroll_edge,
   };
   input_fsm_init(&fsm_cb);
 
@@ -248,7 +441,13 @@ void loop() {
   // Fire motor bump only on rotation events. Open-loop pulse with no finger
   // on the knob (i.e. during CLICK/LONG/DOUBLE) can freely spin the shaft
   // since there's no hand resistance to absorb the torque.
-  if (e == EVT_ROT_CW || e == EVT_ROT_CCW) hw_motor_click_default();
+  // Rotation bump: only in non-pet modes. In pet mode the gesture classifier
+  // owns motor feedback (purr / kick); adding a generic bump on every detent
+  // drowns out the subtle purr cadence.
+  if (e == EVT_ROT_CW || e == EVT_ROT_CCW) {
+    DisplayMode m = input_fsm_view().mode;
+    if (m != DISP_PET) hw_motor_click_default();
+  }
 
   if (inPrompt) {
     switch (e) {
@@ -297,6 +496,17 @@ void loop() {
   TFT_eSprite& sp = hw_display_sprite();
   if (firstFrame) { sp.fillSprite(TFT_BLACK); firstFrame = false; }
 
+  // Pet mode purr safety: stop if user hasn't stroked for 3 s;
+  // after 30 s of total stroking, transition to fell-asleep state.
+  if (input_fsm_view().mode == DISP_PET && hw_motor_purr_active()) {
+    if (petStrokeLastMs > 0 && now - petStrokeLastMs > PET_IDLE_MS) {
+      hw_motor_purr_stop();
+    } else if (petStrokeTotalMs > PET_MAX_STROKE_MS) {
+      hw_motor_purr_stop();
+      petFellAsleep = true;
+    }
+  }
+
   DisplayMode m = input_fsm_view().mode;
   switch (m) {
     case DISP_CLOCK:
@@ -308,6 +518,19 @@ void loop() {
     case DISP_HELP:     draw_help();      break;
     case DISP_ABOUT:    draw_about();     break;
     case DISP_PASSKEY:  draw_passkey();   break;
+    case DISP_INFO:
+      draw_info_page(input_fsm_view().infoPage);
+      break;
+    case DISP_PET: {
+      uint8_t state = (uint8_t)P_IDLE;
+      if (petFellAsleep) state = (uint8_t)P_SLEEP;
+      else if (millis() < petDizzyUntilMs) state = (uint8_t)P_DIZZY;
+      else if (millis() < petSquishUntilMs) state = (uint8_t)P_HEART;   // squish reuses heart frames
+      else if (hw_motor_purr_active()) state = (uint8_t)P_HEART;         // being stroked
+      bool showHint = (millis() - petEnterMs) < PET_HINT_MS;
+      draw_pet_main(state, showHint);
+      break;
+    }
     case DISP_HOME:
     default: {
       if (buddyMode) {
@@ -327,5 +550,7 @@ void loop() {
       break;
     }
   }
+
+  hw_motor_tick(now);   // drive continuous motor patterns
   delay(20);
 }

@@ -12,12 +12,14 @@
 enum { B_SLEEP, B_IDLE, B_BUSY, B_ATTENTION, B_CELEBRATE, B_DIZZY, B_HEART };
 
 // ──────────────── shared geometry ────────────────
-// Adapted for X-Knob 240×240 round LCD (Phase 1). Vertical shifted up
-// slightly so the state label at y≈205 has clear space under the body.
+// Adapted for X-Knob 240×240 round LCD. Phase 2-B shifted the body up
+// further so the HUD/stats footer can be 4 lines tall (y=150..208).
+// At scale 2 the body now spans y=66..146; particles drift into the top
+// cap (y~0..60).
 const int BUDDY_X_CENTER = 120;
 const int BUDDY_CANVAS_W = 240;
-const int BUDDY_Y_BASE   = 55;
-const int BUDDY_Y_OVERLAY = 30;
+const int BUDDY_Y_BASE   = 40;
+const int BUDDY_Y_OVERLAY = 15;
 const int BUDDY_CHAR_W   = 6;
 const int BUDDY_CHAR_H   = 8;
 
