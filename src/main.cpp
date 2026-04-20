@@ -364,9 +364,9 @@ static void cb_on_info_page_change(uint8_t /*p*/)   { /* main loop repaints each
 static void cb_on_hud_scroll_change(uint8_t /*o*/) { /* main loop repaints */ }
 
 static void cb_on_scroll_edge(bool /*cw*/) {
-  // Hard edge "wall bump" — two rapid strong reverse pulses so the user
-  // feels the knob push back against their finger.
-  hw_motor_pulse_series(2, 50, 4);
+  // Hard edge "wall bump" — three distinct strong pulses with longer gap
+  // so the user clearly feels the boundary push-back.
+  hw_motor_pulse_series(3, 80, 4);
 }
 
 void setup() {
@@ -648,7 +648,7 @@ void loop() {
       // D2-A: Show progressive long-press hint
       if (lpState == LP_CONFIRMING) {
         sp.setTextDatum(MC_DATUM);
-        sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
+        sp.setTextColor(TFT_WHITE, TFT_BLACK);
         sp.setTextSize(1);
         sp.drawString("松手=菜单 | 继续=休眠", 120, 200);
         sp.setTextDatum(TL_DATUM);
