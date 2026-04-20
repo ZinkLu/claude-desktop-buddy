@@ -241,15 +241,16 @@ static void drawHudSimple() {
   sp.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
   sp.setTextDatum(MC_DATUM);
 
-  uint8_t scroll = input_fsm_view().hudScroll;
+  // rawScroll reflects the user's intent straight from the FSM. scroll is
+  // clamped later to whatever display rows exist; indicator uses rawScroll
+  // so rotation always shows feedback, even with too-short transcripts.
+  const uint8_t rawScroll = input_fsm_view().hudScroll;
+  uint8_t scroll = rawScroll;
 
-  // Always paint the scroll indicator first (even with no transcript) so the
-  // user sees rotation feedback regardless of data state. Size-2 orange top
-  // of the HUD strip so it's clearly visible.
   auto drawIndicator = [&]() {
-    if (scroll == 0) return;
+    if (rawScroll == 0) return;
     char b[6];
-    snprintf(b, sizeof(b), "-%u", (unsigned)scroll);
+    snprintf(b, sizeof(b), "-%u", (unsigned)rawScroll);
     sp.setTextSize(2);
     sp.setTextColor(TFT_ORANGE, TFT_BLACK);
     sp.setTextDatum(TR_DATUM);
