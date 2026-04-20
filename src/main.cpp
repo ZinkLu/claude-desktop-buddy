@@ -450,7 +450,7 @@ void loop() {
         sp.setTextDatum(MC_DATUM);
         sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
         sp.setTextSize(1);
-        sp.drawString("转动或点击唤醒", 120, 220);
+        sp.drawString("Rotate or Click to wake", 120, 220);
         sp.setTextDatum(TL_DATUM);
       }
       sp.pushSprite(0, 0);
@@ -573,7 +573,8 @@ void loop() {
     }
   } else {
     // D2-A: Progressive long-press for home mode
-    if (e == EVT_LONG && input_fsm_view().mode == DISP_HOME && lpState == LP_IDLE) {
+    // Only trigger when no prompt is active (prompt has priority)
+    if (e == EVT_LONG && input_fsm_view().mode == DISP_HOME && lpState == LP_IDLE && !inPrompt) {
       lpState = LP_CONFIRMING;
       lpStartMs = now;
       hw_motor_click(40);  // Soft acknowledgement pulse
@@ -652,12 +653,13 @@ void loop() {
         sp.drawString("no character", 120, 120);
         sp.setTextDatum(TL_DATUM);
       }
-      // D2-A: Show progressive long-press hint (also in hint-hold state)
-      if (lpState == LP_CONFIRMING || lpState == LP_HINT_HOLD) {
+      // D2-A: Show progressive long-press hint at top so it isn't
+      // overwritten by the bottom approval / HUD panel (y=148..220).
+      if ((lpState == LP_CONFIRMING || lpState == LP_HINT_HOLD) && !inPrompt) {
         sp.setTextDatum(MC_DATUM);
         sp.setTextColor(TFT_WHITE, TFT_BLACK);
         sp.setTextSize(1);
-        sp.drawString("松手=菜单 | 继续=休眠", 120, 200);
+        sp.drawString("Release = Menu  |  Hold = Nap", 120, 35);
         sp.setTextDatum(TL_DATUM);
       }
       if (inPrompt)            drawApproval();    // approvals always show
