@@ -226,9 +226,10 @@ static void drawHudSimple() {
   TFT_eSprite& sp = hw_display_sprite();
   // HUD sits in the lower portion of the visible circle (y=150..208).
   // With BUDDY_Y_BASE=40 the character body ends at y=146, leaving room
-  // for 4 lines of transcript at y=154/166/178/190 + a scroll indicator
-  // at the bottom. Narrowest row (y=190) visible width ~2*sqrt(120^2-70^2)
-  // ≈ 195 px ≈ 32 chars at size 1; use WIDTH=28 for margin.
+  // for 4 lines of transcript at y=154/166/178/190. Narrowest row (y=190)
+  // visible width ~2*sqrt(120^2-70^2) ≈ 195 px ≈ 32 chars at size 1;
+  // WIDTH=28 for margin. Scroll position is conveyed by the motor
+  // edge-bump at the boundaries, no visual indicator needed.
   const int SHOW = 4;
   const int TOP  = 150;
   const int LH   = 12;
@@ -241,28 +242,10 @@ static void drawHudSimple() {
   sp.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
   sp.setTextDatum(MC_DATUM);
 
-  // Orange "-N" indicator at top-right of HUD strip. Captured by reference
-  // so we read the scroll value AFTER the FSM clamp, not before.
-  uint8_t scroll = 0;
-  auto drawIndicator = [&]() {
-    if (scroll == 0) return;
-    char b[6];
-    snprintf(b, sizeof(b), "-%u", (unsigned)scroll);
-    sp.setTextSize(2);
-    sp.setTextColor(TFT_ORANGE, TFT_BLACK);
-    sp.setTextDatum(TR_DATUM);
-    sp.drawString(b, 220, TOP + 2);
-    sp.setTextSize(1);
-    sp.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-    sp.setTextDatum(MC_DATUM);
-  };
-
   if (tama.nLines == 0) {
     input_fsm_set_hud_scroll_max(0);
-    scroll = input_fsm_view().hudScroll;   // will be 0 after the clamp
     const char* line = tama.msg;
     if (line && *line) sp.drawString(line, 120, TOP + 20);
-    drawIndicator();
     sp.setTextDatum(TL_DATUM);
     return;
   }
@@ -275,17 +258,13 @@ static void drawHudSimple() {
   }
   if (nDisp == 0) {
     input_fsm_set_hud_scroll_max(0);
-    scroll = input_fsm_view().hudScroll;
-    drawIndicator();
     sp.setTextDatum(TL_DATUM);
     return;
   }
 
-  // FSM clamps hudScroll to [0, maxBack] so rotation past the end stops
-  // advancing. Read AFTER the set so scroll reflects the clamp.
   uint8_t maxBack = (nDisp > SHOW) ? (uint8_t)(nDisp - SHOW) : 0;
   input_fsm_set_hud_scroll_max(maxBack);
-  scroll = input_fsm_view().hudScroll;
+  uint8_t scroll = input_fsm_view().hudScroll;
 
   int end = (int)nDisp - scroll;
   int start = end - SHOW; if (start < 0) start = 0;
@@ -294,7 +273,6 @@ static void drawHudSimple() {
     sp.drawString(disp[start + i], 120, TOP + 4 + i * LH);
   }
 
-  drawIndicator();
   sp.setTextDatum(TL_DATUM);
 }
 
