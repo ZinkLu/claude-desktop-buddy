@@ -450,7 +450,8 @@ void loop() {
         sp.setTextDatum(MC_DATUM);
         sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
         sp.setTextSize(1);
-        sp.drawString("Rotate or Click to wake", 120, 220);
+        sp.drawString("Rotate or Click", 120, 58);
+        sp.drawString("to wake", 120, 70);
         sp.setTextDatum(TL_DATUM);
       }
       sp.pushSprite(0, 0);
