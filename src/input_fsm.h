@@ -43,6 +43,7 @@ struct FsmCallbacks {
   void (*on_pet_long_press)();                 // squish vibration
   void (*on_info_page_change)(uint8_t page);   // repaint info page
   void (*on_hud_scroll_change)(uint8_t ofs);   // repaint home HUD strip
+  void (*on_scroll_edge)(bool cw);             // HUD scroll hit end; main fires "wall bump"
 };
 
 // Snapshot of FSM state for renderers. All fields read-only from outside.

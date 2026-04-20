@@ -367,7 +367,13 @@ static void cb_on_pet_long_press() {
 }
 
 static void cb_on_info_page_change(uint8_t /*p*/)   { /* main loop repaints each frame */ }
-static void cb_on_hud_scroll_change(uint8_t o) { Serial.printf("[hud] scroll=%u\n", o); }
+static void cb_on_hud_scroll_change(uint8_t /*o*/) { /* main loop repaints */ }
+
+static void cb_on_scroll_edge(bool /*cw*/) {
+  // Hard edge "wall bump" — two rapid strong reverse pulses so the user
+  // feels the knob push back against their finger.
+  hw_motor_pulse_series(2, 50, 4);
+}
 
 void setup() {
   hw_power_init();
@@ -410,6 +416,7 @@ void setup() {
     cb_on_pet_long_press,
     cb_on_info_page_change,
     cb_on_hud_scroll_change,
+    cb_on_scroll_edge,
   };
   input_fsm_init(&fsm_cb);
 

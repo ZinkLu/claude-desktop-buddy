@@ -27,6 +27,8 @@ struct MockCalls {
   int on_info_page_change;
   uint8_t last_info_page;
   int on_hud_scroll_change;
+  int on_scroll_edge;
+  bool last_edge_cw;
   uint8_t last_hud_scroll;
 };
 
@@ -47,6 +49,7 @@ static void mk_on_pet_rotation(bool cw)        { mock.on_pet_rotation++; mock.la
 static void mk_on_pet_long_press()             { mock.on_pet_long_press++; }
 static void mk_on_info_page_change(uint8_t p)  { mock.on_info_page_change++; mock.last_info_page = p; }
 static void mk_on_hud_scroll_change(uint8_t o) { mock.on_hud_scroll_change++; mock.last_hud_scroll = o; }
+static void mk_on_scroll_edge(bool cw)         { mock.on_scroll_edge++; mock.last_edge_cw = cw; }
 
 static const FsmCallbacks CB = {
   mk_turn_off, mk_delete_char, mk_factory_reset, mk_toggle_demo,
@@ -54,6 +57,7 @@ static const FsmCallbacks CB = {
   mk_invalidate_clock, mk_invalidate_buddy, mk_invalidate_panel,
   mk_on_enter_pet, mk_on_exit_pet, mk_on_pet_rotation,
   mk_on_pet_long_press, mk_on_info_page_change, mk_on_hud_scroll_change,
+  mk_on_scroll_edge,
 };
 
 // --- Host-side shim for settings().haptic / brightness / hud ------------
@@ -389,6 +393,34 @@ void test_home_hud_scroll_clamps_at_30() {
   TEST_ASSERT_EQUAL(30, input_fsm_view().hudScroll);
 }
 
+void test_scroll_edge_fires_past_bottom() {
+  // At hudScroll=0, a further CCW hits the top edge.
+  input_fsm_dispatch(EVT_ROT_CCW, 1000);
+  TEST_ASSERT_EQUAL(1, mock.on_scroll_edge);
+  TEST_ASSERT_FALSE(mock.last_edge_cw);
+  TEST_ASSERT_EQUAL(0, input_fsm_view().hudScroll);
+}
+
+void test_scroll_edge_fires_at_max() {
+  input_fsm_set_hud_scroll_max(2);
+  input_fsm_dispatch(EVT_ROT_CW, 1000);  // 0 -> 1, no edge
+  input_fsm_dispatch(EVT_ROT_CW, 1100);  // 1 -> 2, no edge
+  TEST_ASSERT_EQUAL(0, mock.on_scroll_edge);
+  input_fsm_dispatch(EVT_ROT_CW, 1200);  // would go past 2, fire edge
+  TEST_ASSERT_EQUAL(1, mock.on_scroll_edge);
+  TEST_ASSERT_TRUE(mock.last_edge_cw);
+  TEST_ASSERT_EQUAL(2, input_fsm_view().hudScroll);  // still capped at 2
+}
+
+void test_scroll_max_clamp_lowers_scroll() {
+  input_fsm_dispatch(EVT_ROT_CW, 1000);  // hudScroll=1
+  input_fsm_dispatch(EVT_ROT_CW, 1100);  // hudScroll=2
+  input_fsm_dispatch(EVT_ROT_CW, 1200);  // hudScroll=3
+  TEST_ASSERT_EQUAL(3, input_fsm_view().hudScroll);
+  input_fsm_set_hud_scroll_max(1);       // shrink available history
+  TEST_ASSERT_EQUAL(1, input_fsm_view().hudScroll);
+}
+
 void test_menu_help_opens_info_page_0() {
   input_fsm_dispatch(EVT_LONG, 1000);  // home -> menu
   // 'help' is item 3; scroll to it
@@ -452,6 +484,9 @@ int main() {
   RUN_TEST(test_pet_long_press_triggers_squish_callback);
   RUN_TEST(test_home_rotation_scrolls_hud);
   RUN_TEST(test_home_hud_scroll_clamps_at_30);
+  RUN_TEST(test_scroll_edge_fires_past_bottom);
+  RUN_TEST(test_scroll_edge_fires_at_max);
+  RUN_TEST(test_scroll_max_clamp_lowers_scroll);
   RUN_TEST(test_menu_help_opens_info_page_0);
   RUN_TEST(test_menu_about_opens_info_page_3);
   RUN_TEST(test_prompt_force_home_stops_pet);

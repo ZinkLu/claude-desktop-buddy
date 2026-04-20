@@ -138,13 +138,21 @@ void input_fsm_dispatch(InputEvent e, uint32_t now_ms) {
       return;
     }
     if (e == EVT_ROT_CW) {
-      if (_v.hudScroll < _hudScrollMax) _v.hudScroll++;
-      CALL1(on_hud_scroll_change, _v.hudScroll);
+      if (_v.hudScroll < _hudScrollMax) {
+        _v.hudScroll++;
+        CALL1(on_hud_scroll_change, _v.hudScroll);
+      } else {
+        CALL1(on_scroll_edge, true);   // hit the far end
+      }
       return;
     }
     if (e == EVT_ROT_CCW) {
-      if (_v.hudScroll > 0) _v.hudScroll--;
-      CALL1(on_hud_scroll_change, _v.hudScroll);
+      if (_v.hudScroll > 0) {
+        _v.hudScroll--;
+        CALL1(on_hud_scroll_change, _v.hudScroll);
+      } else {
+        CALL1(on_scroll_edge, false);  // hit the newest / top
+      }
       return;
     }
     // EVT_LONG falls through to existing "home -> menu" handler below.
