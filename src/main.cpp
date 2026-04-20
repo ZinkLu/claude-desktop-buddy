@@ -241,16 +241,13 @@ static void drawHudSimple() {
   sp.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
   sp.setTextDatum(MC_DATUM);
 
-  // rawScroll reflects the user's intent straight from the FSM. scroll is
-  // clamped later to whatever display rows exist; indicator uses rawScroll
-  // so rotation always shows feedback, even with too-short transcripts.
-  const uint8_t rawScroll = input_fsm_view().hudScroll;
-  uint8_t scroll = rawScroll;
-
+  // Orange "-N" indicator at top-right of HUD strip. Captured by reference
+  // so we read the scroll value AFTER the FSM clamp, not before.
+  uint8_t scroll = 0;
   auto drawIndicator = [&]() {
-    if (rawScroll == 0) return;
+    if (scroll == 0) return;
     char b[6];
-    snprintf(b, sizeof(b), "-%u", (unsigned)rawScroll);
+    snprintf(b, sizeof(b), "-%u", (unsigned)scroll);
     sp.setTextSize(2);
     sp.setTextColor(TFT_ORANGE, TFT_BLACK);
     sp.setTextDatum(TR_DATUM);
@@ -261,10 +258,10 @@ static void drawHudSimple() {
   };
 
   if (tama.nLines == 0) {
+    input_fsm_set_hud_scroll_max(0);
+    scroll = input_fsm_view().hudScroll;   // will be 0 after the clamp
     const char* line = tama.msg;
-    if (line && *line) {
-      sp.drawString(line, 120, TOP + 20);
-    }
+    if (line && *line) sp.drawString(line, 120, TOP + 20);
     drawIndicator();
     sp.setTextDatum(TL_DATUM);
     return;
@@ -276,10 +273,19 @@ static void drawHudSimple() {
     uint8_t got = wrapInto(tama.lines[i], &disp[nDisp], 32 - nDisp, WIDTH);
     nDisp += got;
   }
-  if (nDisp == 0) { drawIndicator(); sp.setTextDatum(TL_DATUM); return; }
+  if (nDisp == 0) {
+    input_fsm_set_hud_scroll_max(0);
+    scroll = input_fsm_view().hudScroll;
+    drawIndicator();
+    sp.setTextDatum(TL_DATUM);
+    return;
+  }
 
+  // FSM clamps hudScroll to [0, maxBack] so rotation past the end stops
+  // advancing. Read AFTER the set so scroll reflects the clamp.
   uint8_t maxBack = (nDisp > SHOW) ? (uint8_t)(nDisp - SHOW) : 0;
-  if (scroll > maxBack) scroll = maxBack;
+  input_fsm_set_hud_scroll_max(maxBack);
+  scroll = input_fsm_view().hudScroll;
 
   int end = (int)nDisp - scroll;
   int start = end - SHOW; if (start < 0) start = 0;

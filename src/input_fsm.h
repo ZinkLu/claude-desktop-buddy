@@ -63,6 +63,10 @@ void input_fsm_dispatch(InputEvent e, uint32_t now_ms);
 void input_fsm_tick(uint32_t now_ms);    // clears expired reset arm; called each main loop
 void input_fsm_on_passkey_change(bool active);  // called when blePasskey() (non-)zero transitions
 void input_fsm_force_home_on_prompt();
+// Main supplies the current real maximum hudScroll based on transcript
+// line count. FSM caps hudScroll at this value so rotation can't exceed
+// "no more history" — user sees -N stop advancing when they hit the end.
+void input_fsm_set_hud_scroll_max(uint8_t max);
 const FsmView& input_fsm_view();
 
 // Internal helpers exposed for unit tests only.

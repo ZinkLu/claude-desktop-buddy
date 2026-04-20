@@ -10,7 +10,7 @@ static const uint8_t MENU_N     = 7;
 static const uint8_t SETTINGS_N = 5;
 static const uint8_t RESET_N    = 3;
 static const uint8_t INFO_N        = 4;
-static const uint8_t HUD_MAX_SCROLL = 30;
+static const uint8_t HUD_MAX_SCROLL_HARD_CAP = 30;
 static const uint32_t RESET_CONFIRM_WINDOW_MS = 3000;
 
 // Module state
@@ -18,6 +18,15 @@ static FsmCallbacks _cb = {};
 static FsmView _v;
 static DisplayMode _previousForPasskey = DISP_HOME;
 static bool _passkeyActive = false;
+// Main sets this each frame based on actual transcript depth. Defaults
+// to the hard cap so tests and first-boot work without explicit setup.
+static uint8_t _hudScrollMax = HUD_MAX_SCROLL_HARD_CAP;
+
+void input_fsm_set_hud_scroll_max(uint8_t max) {
+  if (max > HUD_MAX_SCROLL_HARD_CAP) max = HUD_MAX_SCROLL_HARD_CAP;
+  _hudScrollMax = max;
+  if (_v.hudScroll > max) _v.hudScroll = max;
+}
 
 static void _reset_state() {
   _v.mode = DISP_HOME;
@@ -28,6 +37,7 @@ static void _reset_state() {
   _v.resetConfirmUntil = 0;
   _v.infoPage = 0;
   _v.hudScroll = 0;
+  _hudScrollMax = HUD_MAX_SCROLL_HARD_CAP;
   _previousForPasskey = DISP_HOME;
   _passkeyActive = false;
 }
@@ -128,7 +138,7 @@ void input_fsm_dispatch(InputEvent e, uint32_t now_ms) {
       return;
     }
     if (e == EVT_ROT_CW) {
-      if (_v.hudScroll < HUD_MAX_SCROLL) _v.hudScroll++;
+      if (_v.hudScroll < _hudScrollMax) _v.hudScroll++;
       CALL1(on_hud_scroll_change, _v.hudScroll);
       return;
     }
