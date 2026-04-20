@@ -653,13 +653,15 @@ void loop() {
         sp.drawString("no character", 120, 120);
         sp.setTextDatum(TL_DATUM);
       }
-      // D2-A: Show progressive long-press hint at top so it isn't
-      // overwritten by the bottom approval / HUD panel (y=148..220).
+      // D2-A: Show progressive long-press hint.
+      // Position at y=65 — far enough from the circular top edge so the
+      // text stays fully visible on the 240×240 round LCD (GC9A01).
       if ((lpState == LP_CONFIRMING || lpState == LP_HINT_HOLD) && !inPrompt) {
         sp.setTextDatum(MC_DATUM);
         sp.setTextColor(TFT_WHITE, TFT_BLACK);
         sp.setTextSize(1);
-        sp.drawString("Release = Menu  |  Hold = Nap", 120, 35);
+        sp.drawString("Release = Menu", 120, 58);
+        sp.drawString("Hold = Nap",     120, 70);
         sp.setTextDatum(TL_DATUM);
       }
       if (inPrompt)            drawApproval();    // approvals always show
