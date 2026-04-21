@@ -1,0 +1,25 @@
+# CJK Character List for Claude Desktop Buddy
+# ~350 most common Chinese characters for UI display
+# Lines starting with # are comments
+# Empty lines are ignored
+
+# Common function words (de, shi, zai, you, he, etc.)
+的 是 在 有 和 与 或 但 而 因 所 被 把 给 让 对 从 到 为 以 就 都 要 会 能 可 这 那 些 个 种 样 里 上 下 前 后 中 内 外 边 面 头 间 部 分 类 等 及 其 之 已 将 未 无 不 非 没 别 还 又 再 只 最 很 太 更 比 较 常 经 正 曾 以 可 能 应 该 须 需 想 喜 欢 觉 得 认 为 知 道 了 解 明 白 理 解 记 得 忘 记 注 意 小 心 重 紧 急 即 刻 马 很 快 稍 后
+
+# Tool/action names (wenjian, bianji, sousuo, liulan, etc.)
+文 件 编 辑 搜 索 浏 览 器 终 端 码 运 行 调 试 测 编 译 构 建 部 署 发 布 版 本 支 提 交 推 送 拉 取 合 并 冲 突 解 决 修 复 补 丁 更 新 升 降 安 装 卸 下 载 上 传 复 制 粘 贴 剪 切 撤 销 重 做 全 选 查 找 替 换 跳 转 定 位 书 签 标 记 注 释 档 志 录 跟 踪 监 控 查 看 观 察 检 验 证 审 核 查 审 批 准 拒 绝 接 受 同 意 反 对 支 持 帮 辅 助 协 助 配 合 作 协 调 联 系 连 链 接 关 联
+
+# Status words (wancheng, shibai, dengdai, queren, etc.)
+完 成 败 待 确 认 取 消 继 续 返 回 开 始 结 束 停 止 暂 恢 复 新 次 反 复 不 断 逐 渐 慢 快 速 迅 立 即 马 上 赶 快 连 忙 忙 成 功
+
+# System/menu words (shezhi, bangzhu, guanyu, liangdu, etc.)
+设 置 帮 关 于 亮 度 触 转 录 宠 物 时 钟 批 允 许 可 授 权 访 问 读 写 修 改 删 除 创 建 生 成 分 析 处 理 询 调 用 引 参 考 依 赖 关 联 相 匹 符 合 满 足 包 括 排 除 去
+
+# Numbers (yi, er, san, si, wu, etc.)
+一 二 三 四 五 六 七 八 九 十 百 千 万 亿 零 两 半 双 整 正 负 加 减 乘 除 等 于 大 小 约 余 多 少
+
+# Time (nian, yue, ri, shi, fen, miao, etc.)
+年 月 日 时 分 秒 星 期 周 季 早 中 晚 上 午 下 晚 上
+
+# Claude Desktop specific (zhunxu, fangwen, chuangjian, etc.)
+准 许 访 问 读 写 修 改 删 除 创 建 生 成 分 析 处 理 询 调 用 引 参 考 依 赖 关 联 相 匹 符 合 满 足 包 括 排 除 去
