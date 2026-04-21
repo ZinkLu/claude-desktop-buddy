@@ -16,6 +16,7 @@
 #include "info_pages.h"
 #include "pet_pages.h"
 #include "pet_gesture.h"
+#include "hw_idle.h"
 
 enum PersonaState { P_SLEEP, P_IDLE, P_BUSY, P_ATTENTION, P_CELEBRATE, P_DIZZY, P_HEART };
 
@@ -39,6 +40,7 @@ uint8_t panel_brightness()     { return settings().brightness; }
 uint8_t panel_haptic()         { return settings().haptic; }
 bool    panel_transcript_on()  { return settings().hud; }
 bool    panel_data_demo()      { return dataDemo(); }
+bool    panel_auto_dim()       { return settings().autoDim; }
 
 // Info page bridges
 const char* info_bt_name()              { return btName; }
@@ -90,6 +92,13 @@ static void cycle_haptic(uint8_t) {
 static void toggle_transcript(bool) {
   Settings& s = settings();
   s.hud = !s.hud;
+  settingsSave();
+}
+
+static void toggle_auto_dim(bool) {
+  Settings& s = settings();
+  s.autoDim = !s.autoDim;
+  hw_idle_set_enabled(s.autoDim);
   settingsSave();
 }
 
@@ -383,6 +392,7 @@ void setup() {
   hw_display_init();
   hw_input_init();
   hw_motor_init();
+  hw_idle_init();
 
   statsLoad();
   settingsLoad();
@@ -413,6 +423,7 @@ void setup() {
     cb_on_info_page_change,
     cb_on_hud_scroll_change,
     cb_on_scroll_edge,
+    toggle_auto_dim,
   };
   input_fsm_init(&fsm_cb);
 
@@ -538,6 +549,21 @@ void loop() {
   }
 
   InputEvent e = hw_input_poll();
+
+  // G: Track idle activity and handle dim/wake
+  static bool wasDimmed = false;
+  if (e != EVT_NONE) {
+    hw_idle_activity();
+    if (wasDimmed) {
+      wasDimmed = false;
+      hw_display_set_brightness((settings().brightness + 1) * 20);
+    }
+  }
+  if (hw_idle_tick(now)) {
+    wasDimmed = true;
+    hw_display_set_brightness(10);
+  }
+
   // Fire motor bump only on rotation events. Open-loop pulse with no finger
   // on the knob (i.e. during CLICK/LONG/DOUBLE) can freely spin the shaft
   // since there's no hand resistance to absorb the torque.
@@ -633,7 +659,8 @@ void loop() {
       break;
     case DISP_PET: {
       uint8_t state = (uint8_t)P_IDLE;
-      if (petFellAsleep) state = (uint8_t)P_SLEEP;
+      if (hw_idle_is_dimmed()) state = (uint8_t)P_SLEEP;  // G: dim → sleep
+      else if (petFellAsleep) state = (uint8_t)P_SLEEP;
       else if (millis() < petDizzyUntilMs) state = (uint8_t)P_DIZZY;
       else if (millis() < petSquishUntilMs) state = (uint8_t)P_HEART;   // squish reuses heart frames
       else if (hw_motor_purr_active()) state = (uint8_t)P_HEART;         // being stroked
@@ -643,10 +670,11 @@ void loop() {
     }
     case DISP_HOME:
     default: {
+      PersonaState renderState = hw_idle_is_dimmed() ? P_SLEEP : activeState;  // G: dim → sleep
       if (buddyMode) {
-        buddyTick((uint8_t)activeState);
+        buddyTick((uint8_t)renderState);
       } else if (characterLoaded()) {
-        characterSetState((uint8_t)activeState);
+        characterSetState((uint8_t)renderState);
         characterTick();
       } else {
         sp.setTextDatum(MC_DATUM);
