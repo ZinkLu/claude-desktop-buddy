@@ -105,6 +105,17 @@ pio device monitor
 | 持久化 | 重启设备 | 自动恢复上次选择的物种 |
 | 全部物种 | 浏览所有 18 个 | 每个都能正常显示动画：capybara, axolotl, blob, cactus, cat, chonk, dragon, duck, ghost, goose, mushroom, octopus, owl, penguin, rabbit, robot, snail, turtle |
 
+### E2. CJK 字体支持
+
+| 测试项 | 操作 | 预期结果 |
+|--------|------|----------|
+| 中文 prompt | Claude Desktop 发送含中文的 prompt | 正确显示汉字，无 `??` |
+| 混合文本 | prompt 含中英文混合 | 中英文均正确显示，对齐正常 |
+| HUD 中文 | 转录记录含中文 | HUD 换行正确，无乱码 |
+| 缺字占位 | 收到字符清单外的汉字 | 显示 `□` 占位符，不崩溃 |
+| ASCII 兼容 | 英文 prompt / 菜单 | 与之前完全一致 |
+| 缓冲区 | 超长中文 prompt (>16 字) | 安全截断，不溢出 |
+
 ### J. BLE / 配对
 
 | 测试项 | 操作 | 预期结果 |
@@ -139,7 +150,7 @@ pio device monitor
 ## 已知问题 / 待验证
 
 - [ ] **D1 SimpleFOC**: 电机闭环未实现，当前触觉为开环脉冲
-- [ ] **E2 CJK 字体**: 中文 prompt 显示为 `??`，已搁置
+- [x] **E2 CJK 字体**: ~~中文 prompt 显示为 `??`，已搁置~~ ✅ 已实现：319 常用汉字，12×12 bitmap 字体
 - [ ] **F WiFi+NTP**: 未开始
 - [ ] **Phase 2-B 遗留**: Info 页内容（CLAUDE live data, SYSTEM uptime/MAC, CREDITS）、Pet 3-pulse greeting/2-pulse bye、30-s "fell asleep" 转换 —— 上次 session 未硬件验证
 
