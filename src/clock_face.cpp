@@ -5,6 +5,7 @@
 #ifdef ARDUINO
 #include <Arduino.h>
 #include "hw_display.h"
+#include "buddy.h"
 #endif
 
 // Time is considered "valid" (synced) when time() returns something after
@@ -44,6 +45,31 @@ bool needs_redraw(const struct tm& t, int& cachedMin, int& cachedSec, int& cache
 
 #ifdef ARDUINO
 
+// PersonaState values matching main.cpp enum (D4)
+enum PersonaState { P_SLEEP = 0, P_IDLE = 1, P_BUSY = 2,
+                    P_ATTENTION = 3, P_CELEBRATE = 4, P_DIZZY = 5, P_HEART = 6 };
+
+// Derive buddy mood state from current time (D4).
+// Priority: sleep > celebrate > heart > dizzy > idle
+static uint8_t deriveClockBuddyState(const struct tm& t) {
+  int wday = t.tm_wday;  // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+  int hour = t.tm_hour;
+
+  if (hour >= 1 && hour < 7) {
+    return P_SLEEP;       // 01:00 - 07:00
+  }
+  if (wday == 5 && hour >= 12) {
+    return P_CELEBRATE;   // Friday 12:00+
+  }
+  if (wday == 0 || wday == 6) {
+    return P_HEART;       // Sat / Sun
+  }
+  if (hour >= 22) {
+    return P_DIZZY;       // 22:00+
+  }
+  return P_IDLE;
+}
+
 // Private module state
 static bool    _valid      = false;
 static bool    _lastValid  = false;
@@ -73,6 +99,9 @@ static void paintInvalid() {
   sp.drawString("waiting for", 120, 150);
   sp.drawString("Claude", 120, 160);
 
+  // Show idle buddy even when time is invalid (D4)
+  buddyRenderTo(&sp, P_IDLE, 0, 40);
+
   sp.setTextDatum(TL_DATUM);
   sp.pushSprite(0, 0);
 }
@@ -97,6 +126,10 @@ static void paintValid(const struct tm& t) {
   sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
   sp.setTextSize(2);
   sp.drawString(date, 120, 180);
+
+  // Draw mood-based buddy below the date (D4)
+  uint8_t buddyState = deriveClockBuddyState(t);
+  buddyRenderTo(&sp, buddyState, 0, 40);
 
   sp.setTextDatum(TL_DATUM);
   sp.pushSprite(0, 0);
