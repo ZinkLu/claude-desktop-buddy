@@ -157,13 +157,14 @@ void test_settings_brightness_cycles() {
 void test_settings_back_returns_menu() {
   input_fsm_dispatch(EVT_LONG, 1000);     // menu
   input_fsm_dispatch(EVT_CLICK, 1100);    // settings
-  // scroll to 'back' (item 5)
+  // scroll to 'back' (item 6)
   input_fsm_dispatch(EVT_ROT_CW, 1200);
   input_fsm_dispatch(EVT_ROT_CW, 1300);
   input_fsm_dispatch(EVT_ROT_CW, 1400);
   input_fsm_dispatch(EVT_ROT_CW, 1500);
   input_fsm_dispatch(EVT_ROT_CW, 1600);
-  TEST_ASSERT_EQUAL(5, input_fsm_view().settingsSel);
+  input_fsm_dispatch(EVT_ROT_CW, 1700);
+  TEST_ASSERT_EQUAL(6, input_fsm_view().settingsSel);
   input_fsm_dispatch(EVT_CLICK, 1700);
   TEST_ASSERT_EQUAL(DISP_MENU, input_fsm_view().mode);
   TEST_ASSERT_EQUAL(0, input_fsm_view().menuSel);
@@ -179,12 +180,13 @@ void test_settings_long_returns_home() {
 void test_reset_arm_then_execute() {
   input_fsm_dispatch(EVT_LONG, 1000);     // menu
   input_fsm_dispatch(EVT_CLICK, 1100);    // settings
-  // scroll to 'reset' (item 4)
+  // scroll to 'reset' (item 5)
   input_fsm_dispatch(EVT_ROT_CW, 1200);
   input_fsm_dispatch(EVT_ROT_CW, 1300);
   input_fsm_dispatch(EVT_ROT_CW, 1400);
   input_fsm_dispatch(EVT_ROT_CW, 1500);
-  TEST_ASSERT_EQUAL(4, input_fsm_view().settingsSel);
+  input_fsm_dispatch(EVT_ROT_CW, 1600);
+  TEST_ASSERT_EQUAL(5, input_fsm_view().settingsSel);
   input_fsm_dispatch(EVT_CLICK, 1600);    // into reset submenu
   TEST_ASSERT_EQUAL(DISP_RESET, input_fsm_view().mode);
   TEST_ASSERT_EQUAL(0, input_fsm_view().resetSel);  // delete char
@@ -204,8 +206,9 @@ void test_reset_arm_expires() {
   input_fsm_dispatch(EVT_ROT_CW, 1300);
   input_fsm_dispatch(EVT_ROT_CW, 1400);
   input_fsm_dispatch(EVT_ROT_CW, 1500);
-  input_fsm_dispatch(EVT_CLICK, 1600);   // into reset
-  input_fsm_dispatch(EVT_CLICK, 1700);   // arm delete_char
+  input_fsm_dispatch(EVT_ROT_CW, 1600);
+  input_fsm_dispatch(EVT_CLICK, 1700);   // into reset
+  input_fsm_dispatch(EVT_CLICK, 1800);   // arm delete_char
   TEST_ASSERT_EQUAL(0, input_fsm_view().resetConfirmIdx);
   // Tick with now past expiry
   input_fsm_tick(5000);
@@ -223,10 +226,11 @@ void test_reset_scroll_cancels_arm() {
   input_fsm_dispatch(EVT_ROT_CW, 1300);
   input_fsm_dispatch(EVT_ROT_CW, 1400);
   input_fsm_dispatch(EVT_ROT_CW, 1500);
-  input_fsm_dispatch(EVT_CLICK, 1600);   // into reset
-  input_fsm_dispatch(EVT_CLICK, 1700);   // arm delete_char
+  input_fsm_dispatch(EVT_ROT_CW, 1600);
+  input_fsm_dispatch(EVT_CLICK, 1700);   // into reset
+  input_fsm_dispatch(EVT_CLICK, 1800);   // arm delete_char
   TEST_ASSERT_EQUAL(0, input_fsm_view().resetConfirmIdx);
-  input_fsm_dispatch(EVT_ROT_CW, 1800);  // scroll away
+  input_fsm_dispatch(EVT_ROT_CW, 1900);  // scroll away
   TEST_ASSERT_EQUAL(0xFF, input_fsm_view().resetConfirmIdx);
 }
 

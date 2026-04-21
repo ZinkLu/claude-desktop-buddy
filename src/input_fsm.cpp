@@ -7,7 +7,7 @@
 //   Reset:     0 delete char, 1 factory reset, 2 back
 
 static const uint8_t MENU_N     = 7;
-static const uint8_t SETTINGS_N = 6;
+static const uint8_t SETTINGS_N = 7;
 static const uint8_t RESET_N    = 3;
 static const uint8_t INFO_N        = 4;
 static const uint8_t HUD_MAX_SCROLL_HARD_CAP = 30;
@@ -21,6 +21,10 @@ static bool _passkeyActive = false;
 // Main sets this each frame based on actual transcript depth. Defaults
 // to the hard cap so tests and first-boot work without explicit setup.
 static uint8_t _hudScrollMax = HUD_MAX_SCROLL_HARD_CAP;
+static bool _petSelectorConfirmed = false;
+
+bool input_fsm_pet_selector_confirmed() { return _petSelectorConfirmed; }
+void input_fsm_set_pet_selector_idx(uint8_t idx) { _v.petSelectorIdx = idx; }
 
 void input_fsm_set_hud_scroll_max(uint8_t max) {
   if (max > HUD_MAX_SCROLL_HARD_CAP) max = HUD_MAX_SCROLL_HARD_CAP;
@@ -37,9 +41,11 @@ static void _reset_state() {
   _v.resetConfirmUntil = 0;
   _v.infoPage = 0;
   _v.hudScroll = 0;
+  _v.petSelectorIdx = 0;
   _hudScrollMax = HUD_MAX_SCROLL_HARD_CAP;
   _previousForPasskey = DISP_HOME;
   _passkeyActive = false;
+  _petSelectorConfirmed = false;
 }
 
 void input_fsm_init(const FsmCallbacks* cb) {
@@ -89,15 +95,16 @@ static void _menu_click(uint8_t idx) {
   }
 }
 
-// Settings items 0..5
+// Settings items 0..6
 static void _settings_click(uint8_t idx) {
   switch (idx) {
     case 0: CALL1(brightness_changed, 0); CALL0(invalidate_panel); break;   // main owns cycling
     case 1: CALL1(haptic_changed, 0);     CALL0(invalidate_panel); break;
     case 2: CALL1(transcript_changed, false); CALL0(invalidate_panel); break;
     case 3: CALL1(auto_dim_changed, false); CALL0(invalidate_panel); break;   // toggle auto dim
-    case 4: _enter(DISP_RESET); _v.resetSel = 0; _clear_reset_arm(); CALL0(invalidate_panel); break;
-    case 5: _enter(DISP_MENU); _v.menuSel = 0; CALL0(invalidate_panel); break;   // 'back' → main menu
+    case 4: _enter(DISP_PET_SELECTOR); CALL0(invalidate_panel); break;        // open pet selector
+    case 5: _enter(DISP_RESET); _v.resetSel = 0; _clear_reset_arm(); CALL0(invalidate_panel); break;
+    case 6: _enter(DISP_MENU); _v.menuSel = 0; CALL0(invalidate_panel); break;   // 'back' → main menu
     default: break;
   }
 }
@@ -191,6 +198,34 @@ void input_fsm_dispatch(InputEvent e, uint32_t now_ms) {
     }
     // LONG falls through to the generic "any mode LONG -> home" handler
     // below. Rotation is a no-op in clock mode.
+  }
+
+  // --- Pet Selector mode (E1) -----------------------------------------------
+  if (_v.mode == DISP_PET_SELECTOR) {
+    if (e == EVT_ROT_CW) {
+      _v.petSelectorIdx = (_v.petSelectorIdx + 1) % 18;  // 18 species
+      CALL1(on_pet_selector_change, _v.petSelectorIdx);
+      return;
+    }
+    if (e == EVT_ROT_CCW) {
+      _v.petSelectorIdx = (_v.petSelectorIdx + 17) % 18;  // +17 = -1 mod 18
+      CALL1(on_pet_selector_change, _v.petSelectorIdx);
+      return;
+    }
+    if (e == EVT_CLICK) {
+      // Confirm: return to settings, main.cpp will save the selection
+      _petSelectorConfirmed = true;
+      _enter(DISP_SETTINGS);
+      CALL0(invalidate_panel);
+      return;
+    }
+    if (e == EVT_LONG) {
+      // Cancel: return to settings without saving
+      _petSelectorConfirmed = false;
+      _enter(DISP_SETTINGS);
+      CALL0(invalidate_panel);
+      return;
+    }
   }
 
   // --- Info mode -----------------------------------------------------------

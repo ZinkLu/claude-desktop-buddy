@@ -13,6 +13,7 @@ enum DisplayMode {
   DISP_PASSKEY,
   DISP_PET,
   DISP_PET_STATS,
+  DISP_PET_SELECTOR,
   DISP_INFO,
 };
 
@@ -45,6 +46,7 @@ struct FsmCallbacks {
   void (*on_hud_scroll_change)(uint8_t ofs);   // repaint home HUD strip
   void (*on_scroll_edge)(bool cw);             // HUD scroll hit end; main fires "wall bump"
   void (*auto_dim_changed)(bool on);           // Toggle auto screen dim
+  void (*on_pet_selector_change)(uint8_t idx); // Preview species changed in selector
 };
 
 // Snapshot of FSM state for renderers. All fields read-only from outside.
@@ -57,6 +59,7 @@ struct FsmView {
   uint32_t resetConfirmUntil; // millis() expiry; 0 if not armed
   uint8_t infoPage;      // 0..3
   uint8_t hudScroll;     // 0..30 (newest..oldest)
+  uint8_t petSelectorIdx; // 0..N_SPECIES-1, current preview in selector
 };
 
 // API
@@ -70,6 +73,8 @@ void input_fsm_force_home_on_prompt();
 // "no more history" — user sees -N stop advancing when they hit the end.
 void input_fsm_set_hud_scroll_max(uint8_t max);
 const FsmView& input_fsm_view();
+bool input_fsm_pet_selector_confirmed();  // true if last selector exit was CLICK (confirm), false if LONG (cancel)
+void input_fsm_set_pet_selector_idx(uint8_t idx);  // Init selector preview index
 
 // Internal helpers exposed for unit tests only.
 namespace input_fsm_internal {
