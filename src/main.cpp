@@ -32,6 +32,10 @@ static uint32_t promptArrivedMs = 0;
 bool buddyMode = true;          // true=ASCII species, false=GIF character pack
 bool gifAvailable = false;
 
+// E1: Pet selector state (file-scope so draw function can access)
+static uint8_t savedSpeciesIdx = 0;
+static uint8_t selectorPreviewIdx = 0;
+
 // Bridges for other translation units — stats.h and data.h are header-only
 // with file-scope static state, so other .cpp files can't include them
 // without getting their own (never-updated) copies.
@@ -41,6 +45,7 @@ uint8_t panel_haptic()         { return settings().haptic; }
 bool    panel_transcript_on()  { return settings().hud; }
 bool    panel_data_demo()      { return dataDemo(); }
 bool    panel_auto_dim()       { return settings().autoDim; }
+const char* panel_species_name() { return buddySpeciesName(); }
 
 // Info page bridges
 const char* info_bt_name()              { return btName; }
@@ -380,6 +385,12 @@ static void cb_on_scroll_edge(bool /*cw*/) {
   hw_motor_pulse_series(3, 80, 4);
 }
 
+static void cb_on_pet_selector_change(uint8_t idx) {
+  selectorPreviewIdx = idx;
+  buddySetSpeciesIdx(idx);
+  buddyInvalidate();
+}
+
 void setup() {
   hw_power_init();
 
@@ -400,6 +411,12 @@ void setup() {
 
   buddyInit();
   buddySetPeek(false);        // 2× scale on home
+  // E1: load saved species index from NVS
+  uint8_t savedSpecies = speciesIdxLoad();
+  if (savedSpecies < buddySpeciesCount()) {
+    buddySetSpeciesIdx(savedSpecies);
+    Serial.printf("[boot] loaded species: %s\n", buddySpeciesName());
+  }
 
   characterInit(nullptr);     // scans /characters/ in LittleFS
   gifAvailable = characterLoaded();
@@ -424,6 +441,7 @@ void setup() {
     cb_on_hud_scroll_change,
     cb_on_scroll_edge,
     toggle_auto_dim,
+    cb_on_pet_selector_change,
   };
   input_fsm_init(&fsm_cb);
 
@@ -432,6 +450,31 @@ void setup() {
 
   startBt();
   Serial.printf("ready: mode=%s\n", buddyMode ? "ascii" : "gif");
+}
+
+// E1: Pet selector renderer (defined outside loop)
+static void draw_pet_selector() {
+  TFT_eSprite& sp = hw_display_sprite();
+  sp.fillSprite(TFT_BLACK);
+  sp.setTextDatum(TC_DATUM);
+  sp.setTextColor(TFT_WHITE, TFT_BLACK);
+  sp.setTextSize(2);
+  sp.drawString("Choose Your Buddy", 120, 20);
+  // Preview the selected species at 1x scale
+  buddyRenderTo(&sp, P_IDLE);
+  // Show species name
+  sp.setTextDatum(MC_DATUM);
+  sp.setTextSize(2);
+  sp.setTextColor(TFT_YELLOW, TFT_BLACK);
+  const char* name = buddySpeciesNameByIdx(selectorPreviewIdx);
+  if (name) sp.drawString(name, 120, 200);
+  // Hints
+  sp.setTextDatum(TL_DATUM);
+  sp.setTextSize(1);
+  sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  sp.setCursor(30, 220); sp.print("CW/CCW: browse");
+  sp.setCursor(150, 220); sp.print("CLICK: confirm");
+  sp.pushSprite(0, 0);
 }
 
 void loop() {
@@ -610,6 +653,31 @@ void loop() {
       // Normal dispatch when not in confirmation mode
       input_fsm_dispatch(e, now);
     }
+
+    // E1: Handle pet selector enter/exit
+    {
+      static DisplayMode prevMode = DISP_HOME;
+      DisplayMode currMode = input_fsm_view().mode;
+      if (prevMode != DISP_PET_SELECTOR && currMode == DISP_PET_SELECTOR) {
+        // Entering selector: save current species and init preview
+        savedSpeciesIdx = buddySpeciesIdx();
+        selectorPreviewIdx = savedSpeciesIdx;
+        input_fsm_set_pet_selector_idx(savedSpeciesIdx);
+      }
+      if (prevMode == DISP_PET_SELECTOR && currMode != DISP_PET_SELECTOR) {
+        if (input_fsm_pet_selector_confirmed()) {
+          speciesIdxSave(selectorPreviewIdx);
+          buddySetSpeciesIdx(selectorPreviewIdx);
+          Serial.printf("[pet] saved species %u (%s)\n", selectorPreviewIdx, buddySpeciesNameByIdx(selectorPreviewIdx));
+        } else {
+          buddySetSpeciesIdx(savedSpeciesIdx);
+          selectorPreviewIdx = savedSpeciesIdx;
+          Serial.printf("[pet] cancelled, restored %u (%s)\n", savedSpeciesIdx, buddySpeciesNameByIdx(savedSpeciesIdx));
+        }
+      }
+      prevMode = currMode;
+    }
+
     switch (e) {
       case EVT_ROT_CW:  Serial.println("CW");     break;
       case EVT_ROT_CCW: Serial.println("CCW");    break;
@@ -668,6 +736,9 @@ void loop() {
       draw_pet_main(state, showHint);
       break;
     }
+    case DISP_PET_SELECTOR:
+      draw_pet_selector();
+      break;
     case DISP_HOME:
     default: {
       PersonaState renderState = hw_idle_is_dimmed() ? P_SLEEP : activeState;  // G: dim → sleep
