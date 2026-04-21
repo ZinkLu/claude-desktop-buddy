@@ -11,6 +11,7 @@ extern uint8_t panel_brightness();
 extern uint8_t panel_haptic();
 extern bool    panel_transcript_on();
 extern bool    panel_data_demo();
+extern bool    panel_auto_dim();
 
 // --- Palette -------------------------------------------------------------
 // Use fixed values; the buddy character palette is not wired through yet.
@@ -76,16 +77,17 @@ void draw_main_menu() {
 void draw_settings() {
   _panel_title("Settings", TEXT);
   const FsmView& v = input_fsm_view();
-  static const char* LABELS[5] = {
-    "brightness", "haptic", "transcript", "reset", "back"
+  static const char* LABELS[6] = {
+    "brightness", "haptic", "transcript", "auto dim", "reset", "back"
   };
   char buf[8];
   int y = 70;
-  for (uint8_t i = 0; i < 5; i++) {
+  for (uint8_t i = 0; i < 6; i++) {
     const char* val = nullptr;
     if (i == 0) { snprintf(buf, sizeof(buf), "%u", panel_brightness()); val = buf; }
     else if (i == 1) { snprintf(buf, sizeof(buf), "%u", panel_haptic());     val = buf; }
     else if (i == 2) val = panel_transcript_on() ? "on" : "off";
+    else if (i == 3) val = panel_auto_dim() ? "on" : "off";
     _draw_item(y, v.settingsSel == i, LABELS[i], val);
     y += 16;
   }

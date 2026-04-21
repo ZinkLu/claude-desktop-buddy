@@ -7,7 +7,7 @@
 //   Reset:     0 delete char, 1 factory reset, 2 back
 
 static const uint8_t MENU_N     = 7;
-static const uint8_t SETTINGS_N = 5;
+static const uint8_t SETTINGS_N = 6;
 static const uint8_t RESET_N    = 3;
 static const uint8_t INFO_N        = 4;
 static const uint8_t HUD_MAX_SCROLL_HARD_CAP = 30;
@@ -89,14 +89,15 @@ static void _menu_click(uint8_t idx) {
   }
 }
 
-// Settings items 0..4
+// Settings items 0..5
 static void _settings_click(uint8_t idx) {
   switch (idx) {
     case 0: CALL1(brightness_changed, 0); CALL0(invalidate_panel); break;   // main owns cycling
     case 1: CALL1(haptic_changed, 0);     CALL0(invalidate_panel); break;
     case 2: CALL1(transcript_changed, false); CALL0(invalidate_panel); break;
-    case 3: _enter(DISP_RESET); _v.resetSel = 0; _clear_reset_arm(); CALL0(invalidate_panel); break;
-    case 4: _enter(DISP_MENU); _v.menuSel = 0; CALL0(invalidate_panel); break;   // 'back' → main menu
+    case 3: CALL1(auto_dim_changed, false); CALL0(invalidate_panel); break;   // toggle auto dim
+    case 4: _enter(DISP_RESET); _v.resetSel = 0; _clear_reset_arm(); CALL0(invalidate_panel); break;
+    case 5: _enter(DISP_MENU); _v.menuSel = 0; CALL0(invalidate_panel); break;   // 'back' → main menu
     default: break;
   }
 }

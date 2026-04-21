@@ -44,6 +44,7 @@ struct FsmCallbacks {
   void (*on_info_page_change)(uint8_t page);   // repaint info page
   void (*on_hud_scroll_change)(uint8_t ofs);   // repaint home HUD strip
   void (*on_scroll_edge)(bool cw);             // HUD scroll hit end; main fires "wall bump"
+  void (*auto_dim_changed)(bool on);           // Toggle auto screen dim
 };
 
 // Snapshot of FSM state for renderers. All fields read-only from outside.

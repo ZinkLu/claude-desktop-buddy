@@ -185,9 +185,10 @@ struct Settings {
   uint8_t clockRot;  // 0=auto 1=portrait 2=landscape (unused on X-Knob)
   uint8_t brightness;  // 0..4 → 20%..100% backlight PWM
   uint8_t haptic;      // 0..4 → motor bump strength (0 = off)
+  bool autoDim;        // true = enable auto screen dim after idle
 };
 
-static Settings _settings = { true, true, false, true, true, 0, 3, 3 };
+static Settings _settings = { true, true, false, true, true, 0, 3, 3, true };
 
 inline void settingsLoad() {
   _prefs.begin("buddy", true);
@@ -202,6 +203,7 @@ inline void settingsLoad() {
   if (_settings.brightness > 4) _settings.brightness = 3;
   _settings.haptic     = _prefs.getUChar("s_haptic", 3);
   if (_settings.haptic > 4) _settings.haptic = 3;
+  _settings.autoDim    = _prefs.getBool("s_adim", true);
   _prefs.end();
 }
 
@@ -215,6 +217,7 @@ inline void settingsSave() {
   _prefs.putUChar("s_crot", _settings.clockRot);
   _prefs.putUChar("s_bright", _settings.brightness);
   _prefs.putUChar("s_haptic", _settings.haptic);
+  _prefs.putBool("s_adim", _settings.autoDim);
   _prefs.end();
 }
 
