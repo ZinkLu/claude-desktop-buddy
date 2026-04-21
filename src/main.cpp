@@ -17,6 +17,7 @@
 #include "pet_pages.h"
 #include "pet_gesture.h"
 #include "hw_idle.h"
+#include "font_cjk.h"
 
 enum PersonaState { P_SLEEP, P_IDLE, P_BUSY, P_ATTENTION, P_CELEBRATE, P_DIZZY, P_HEART };
 
@@ -189,10 +190,10 @@ static void drawApproval() {
   sp.setCursor(32, 166);
   sp.print(line);
 
-  sp.setTextColor(TFT_WHITE, bg);
-  sp.setTextSize(2);
-  sp.setCursor(32, 178);
-  sp.print(tama.promptTool[0] ? tama.promptTool : "?");
+  // Prompt tool - use CJK rendering for Chinese support
+  cjk_set_target(&sp);
+  cjk_draw_string(32, 178, tama.promptTool[0] ? tama.promptTool : "?",
+                  TFT_WHITE, bg, 2);
   sp.setTextSize(1);
 
   sp.setCursor(40, 205);
@@ -363,8 +364,15 @@ static void drawHudSimple() {
   int end = (int)nDisp - scroll;
   int start = end - SHOW; if (start < 0) start = 0;
 
+  cjk_set_target(&sp);
   for (int i = 0; start + i < end; i++) {
-    sp.drawString(disp[start + i], 120, TOP + 4 + i * LH);
+    // Determine color based on content (keep existing logic)
+    uint16_t color = TFT_LIGHTGREY;
+    const char* line = disp[start + i];
+    if (strncmp(line, "[approved]", 10) == 0) color = TFT_GREEN;
+    else if (strncmp(line, "[denied]", 8) == 0) color = TFT_RED;
+
+    cjk_draw_string(8, TOP + 4 + i * LH, line, color, TFT_BLACK, 1);
   }
 
   sp.setTextDatum(TL_DATUM);
@@ -481,6 +489,7 @@ void setup() {
   if (!LittleFS.begin(true)) Serial.println("LittleFS mount failed");
 
   hw_display_init();
+  cjk_font_init();
   hw_input_init();
   hw_motor_init();
   hw_idle_init();

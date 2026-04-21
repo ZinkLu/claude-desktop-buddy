@@ -88,7 +88,8 @@ def image_to_1bpp_bytes(img):
 def generate_header(chars, bitmaps, size, out_path):
     """Generate C header file with font data."""
     glyph_count = len(chars)
-    bytes_per_glyph = (size * size + 7) // 8
+    bytes_per_row = (size + 7) // 8
+    bytes_per_glyph = bytes_per_row * size
     
     # Sort characters by codepoint for binary search
     sorted_pairs = sorted(zip(chars, bitmaps), key=lambda x: ord(x[0]))
