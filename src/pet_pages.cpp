@@ -2,8 +2,10 @@
 #include <Arduino.h>
 #include "hw_display.h"
 #include "buddy.h"
+#include "character.h"
 
-// Bridges to main.cpp for stats.
+// Bridges to main.cpp for stats and mode flags.
+extern bool        buddyMode;            // true=ASCII, false=GIF
 extern uint8_t     pet_mood_tier();      // 0..4
 extern uint8_t     pet_fed_progress();   // 0..10 (unused in current layout)
 extern uint8_t     pet_energy_tier();    // 0..5  (unused)
@@ -47,12 +49,24 @@ static void tok_fmt(uint32_t v, char* out, size_t n) {
 
 void draw_pet_main(uint8_t personaState, bool showHint) {
   TFT_eSprite& sp = hw_display_sprite();
-  sp.fillSprite(BG);
 
-  // Force buddy to repaint its canvas every frame — its 5fps tick gate
-  // otherwise leaves the sprite black between animation frames.
-  buddyInvalidate();
-  buddyTick(personaState);
+  // Render either ASCII buddy or GIF character depending on mode.
+  // For ASCII: clear screen each frame (buddy renders immediately).
+  // For GIF: only clear on state change (characterSetState handles it);
+  // clearing every frame causes flicker because characterTick() gates
+  // rendering by GIF frame timing, leaving black gaps between frames.
+  static uint8_t lastPersona = 0xFF;
+  if (buddyMode) {
+    sp.fillSprite(BG);
+    buddyInvalidate();
+    buddyTick(personaState);
+  } else if (characterLoaded()) {
+    if (personaState != lastPersona) {
+      characterSetState(personaState);
+      lastPersona = personaState;
+    }
+    characterTick();
+  }
 
   // Top hint "pet me" fades after 3 s (showHint from caller).
   if (showHint) {
