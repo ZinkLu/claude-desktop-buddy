@@ -1,8 +1,9 @@
 # Phase 2 固件测试指南
 
-> **Version**: 2026-04-21  
-> **Branch**: `main` (cf84505)  
-> **Hardware**: X-Knob (ESP32-S3 + GC9A01 240×240 LCD)
+> **Version**: 2026-04-22  
+> **Branch**: `main`  
+> **Hardware**: X-Knob (ESP32-S3 + GC9A01 240×240 LCD)  
+> **关联文档**: [Phase 2 handoff](2026-04-19-phase2-handoff.md)
 
 ## 快速刷入
 
@@ -147,12 +148,76 @@ pio device monitor
 
 ---
 
-## 已知问题 / 待验证
+## 已知问题 / 待验证（与 handoff 同步）
 
-- [ ] **D1 SimpleFOC**: 电机闭环未实现，当前触觉为开环脉冲
-- [x] **E2 CJK 字体**: ~~中文 prompt 显示为 `??`，已搁置~~ ✅ 已实现：319 常用汉字，12×12 bitmap 字体
-- [ ] **F WiFi+NTP**: 未开始
-- [ ] **Phase 2-B 遗留**: Info 页内容（CLAUDE live data, SYSTEM uptime/MAC, CREDITS）、Pet 3-pulse greeting/2-pulse bye、30-s "fell asleep" 转换 —— 上次 session 未硬件验证
+### 硬件
+- [ ] **设备拔 USB 断电** — 疑似电池或 MT3608 损坏。固件修复 `BATTERY_OFF`（commit `8c696a5`）未验证
+
+### 电机 / 触觉（待 D1）
+- [ ] **D1 SimpleFOC 闭环** — 当前开环脉冲"不细腻"，需升级为精细位置控制
+- [ ] **Tickle 阈值** — 5 events/250ms 过严，正常旋转 4 Hz。需在 D1 后重新调优
+- [ ] **Pet 问候/告别脉冲** — 3-pulse greeting（进入 Pet）/ 2-pulse bye（退出）未硬件验证
+
+### 功能
+- [x] **E2 CJK 字体** — ~~已搁置~~ ✅ 已实现：319 常用汉字，12×12 bitmap 字体（代码完成，待中文 prompt 场景验证）
+- [ ] **D3 升级庆祝** — 代码已完成，需累积 50K tokens 硬件验证
+- [ ] **F WiFi+NTP** — 未开始。需 WiFi 配网 UI + SNTP 客户端
+- [ ] **G 深度睡眠** — 当前仅 PWM 变暗到 10%，未实现 LDO2 切断 / 深度睡眠 + EXT0 唤醒
+- [ ] **D2 ROT_FAST** — 非 Pet 模式下快速旋转触发 dizzy，未实现
+- [ ] **D2 菜单硬边界** — Menu/Settings/Reset 到达边界时 wall bump，未实现
+- [ ] **D4 时钟 buddy 富化** — ❌ 已取消
+
+---
+
+## 测试结果记录
+
+> **测试日期**: 2026-04-22
+> **测试人员**: zinklu
+> **固件版本**: main 分支最新
+
+### Phase 2-A/B/C — 已完成并测试通过
+
+| 模块 | 对应子项目 | 状态 | 备注 |
+|------|-----------|------|------|
+| **A. 基础交互** | A | ✅ 通过 | A2 短按触觉反馈已移除（符合当前设计） |
+| **B. 菜单系统** | A | ✅ 通过 | 全部 7 项菜单功能正常 |
+| **C. 时钟模式（基础）** | C | ✅ 通过 | 进入/显示/返回正常，无效时间显示 `--:--` |
+| **F. Pet 模式** | B | ✅ 通过 | 抚摸/挠痒/挤压功能正常 |
+| **H. HUD 滚动** | B | ✅ 通过 | 滚动、边界碰撞正常 |
+| **D. 手动休眠** | D2 (partial) | ✅ 通过 | 3 秒休眠、唤醒、提示正常 |
+| **E. 屏幕自动息屏** | G (partial) | ✅ 通过 | 30 秒息屏、唤醒、设置开关正常 |
+| **I. 宠物选择器** | E (partial) | ✅ 通过 | 18 物种轮播、保存/取消/持久化正常 |
+| **J. BLE / 配对** | A | ✅ 通过 | 配对、prompt、approve/deny 正常 |
+
+### 代码已实现，待后续验证
+
+| 模块 | 对应子项目 | 状态 | 备注 |
+|------|-----------|------|------|
+| **G. 升级庆祝** | D3 | ⏭️ 未验证 | 代码已完成（`statsPollLevelUp()`），需累积 50K tokens 触发 |
+| **E2. CJK 字体** | E | ⏭️ 未测试 | 319 常用汉字已实现，待中文 prompt 场景验证 |
+| **F. 信息页内容** | B | ⚠️ 未充分验证 | Info 页显示正常，但 CLAUDE live data / SYSTEM uptime+MAC / CREDITS 内容未逐项确认 |
+| **F. Pet 问候/告别** | B | ⚠️ 未验证 | 3-pulse greeting（进入 Pet）/ 2-pulse bye（退出 Pet）电机反馈未确认 |
+
+### 尚未实现（参照 handoff 文档）
+
+| 模块 | 对应子项目 | 状态 | 说明 |
+|------|-----------|------|------|
+| **D1. SimpleFOC 电机闭环** | D1 | ⬜ 未开始 | 当前为开环脉冲，待升级为精细位置控制 |
+| **D2. ROT_FAST 手势** | D2 | ⬜ 未实现 | 非 Pet 模式下快速旋转触发 dizzy + stats |
+| **D2. 菜单硬边界** | D2 | ⬜ 未实现 | Menu/Settings/Reset 到达边界时触发 wall bump（当前仅 HUD 有） |
+| **D4. 时钟 buddy 富化** | D4 | ❌ 已取消 | 用户确认取消（周五庆祝/周末 heart/深夜 dizzy 等） |
+| **F. WiFi + NTP** | F | ⬜ 未开始 | 独立时间源，电源丢失后不再依赖 BLE 同步 |
+| **G. 深度睡眠** | G | ⬜ 未实现 | 当前仅 PWM 变暗到 10%，未实现 LDO2 切断 / 深度睡眠 |
+| **WiFi 配网 UI** | F | ⬜ 未开始 | SSID/密码输入界面 |
+
+### 已知问题
+
+| 问题 | 模块 | 严重程度 | 描述 |
+|------|------|----------|------|
+| **选择器布局未居中** | I (宠物选择器) | minor | 界面未居中，部分文字溢出屏幕（圆屏边缘裁剪） |
+| **电机反馈不够细腻** | D1 (全局) | major | 用户反馈"不细腻"，需 SimpleFOC 闭环解决（handoff D1） |
+| **Tickle 阈值过严** | F (Pet) | minor | 5 events/250ms ≈ 20 Hz，正常旋转 4 Hz，难以触发（handoff 遗留） |
+| **设备拔 USB 断电** | 硬件 | major | 疑似电池或 MT3608 损坏，`BATTERY_OFF` 修复未验证（handoff） |
 
 ---
 
@@ -163,5 +228,5 @@ pio device monitor
 3. **串口**: `pio device monitor` 保持打开，记录异常 log
 4. **观察**: 注意屏幕显示完整性（round LCD 边缘裁剪）
 
-**测试顺序建议**: A → B → I → C → D → E → F → G → H → J
-（先验证基础交互，再逐个功能模块）
+**测试顺序建议（基础功能）**: A → B → I → C → D → E → F → G → H → J
+**回归测试（后续迭代）**: E2 (CJK) → D3 (Celebrate) → Pet greeting/bye → Info 内容逐项
