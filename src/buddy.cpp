@@ -18,8 +18,8 @@ enum { B_SLEEP, B_IDLE, B_BUSY, B_ATTENTION, B_CELEBRATE, B_DIZZY, B_HEART };
 // cap (y~0..60).
 const int BUDDY_X_CENTER = 120;
 const int BUDDY_CANVAS_W = 240;
-int BUDDY_Y_BASE   = 40;
-int BUDDY_Y_OVERLAY = 15;
+const int BUDDY_Y_BASE   = 40;
+const int BUDDY_Y_OVERLAY = 15;
 const int BUDDY_CHAR_W   = 6;
 const int BUDDY_CHAR_H   = 8;
 
@@ -170,23 +170,15 @@ void buddySetPeek(bool peek) {
 // clearing. Advances the frame counter so animation runs even when
 // buddyTick is bypassed.
 // Landscape clock callsite — always 1×.
-void buddyRenderTo(TFT_eSPI* tgt, uint8_t personaState, int xOff, int yOff) {
+void buddyRenderTo(TFT_eSPI* tgt, uint8_t personaState) {
   uint8_t prevS = _scale; _scale = 1;
   if (personaState >= 7) personaState = B_IDLE;
   uint32_t now = millis();
   if ((int32_t)(now - nextTickAt) >= 0) { nextTickAt = now + TICK_MS; tickCount++; }
   TFT_eSPI* prev = _tgt;
   _tgt = tgt;
-  // Apply offsets for positioning flexibility (D4 clock buddy)
-  int prevYBase = BUDDY_Y_BASE;
-  int prevYOverlay = BUDDY_Y_OVERLAY;
-  BUDDY_Y_BASE = 40 + yOff;
-  BUDDY_Y_OVERLAY = 15 + yOff;
   const Species* sp = SPECIES_TABLE[currentSpeciesIdx];
   if (sp->states[personaState]) sp->states[personaState](tickCount);
-  // Restore original values
-  BUDDY_Y_BASE = prevYBase;
-  BUDDY_Y_OVERLAY = prevYOverlay;
   _tgt = prev; _scale = prevS;
 }
 
