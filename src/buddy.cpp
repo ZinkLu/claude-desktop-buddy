@@ -45,6 +45,7 @@ static TFT_eSPI* _tgt = &spr;
 // art is space-padded to a fixed width for alignment at 1×; at 2× we trim
 // and re-center per line so the padding doesn't push ink off-screen.
 static uint8_t _scale = 1;
+static int16_t _yOffset = 0;
 
 void buddyPrintLine(const char* line, int yPx, uint16_t color, int xOff) {
   int len = strlen(line);
@@ -61,7 +62,7 @@ void buddyPrintLine(const char* line, int yPx, uint16_t color, int xOff) {
 
 void buddyPrintSprite(const char* const* lines, uint8_t nLines, int yOffset, uint16_t color, int xOff) {
   _tgt->setTextSize(_scale);
-  int yBase = BUDDY_Y_BASE * _scale - (_scale - 1) * 14;
+  int yBase = (BUDDY_Y_BASE + _yOffset) * _scale - (_scale - 1) * 14;
   for (uint8_t i = 0; i < nLines; i++) {
     buddyPrintLine(lines[i], yBase + (yOffset + i * BUDDY_CHAR_H) * _scale, color, xOff);
   }
@@ -70,7 +71,7 @@ void buddyPrintSprite(const char* const* lines, uint8_t nLines, int yOffset, uin
 // Species pass 1× coords (relative to BUDDY_X_CENTER / BUDDY_Y_OVERLAY);
 // transform here so all 18 species files stay scale-agnostic.
 void buddySetCursor(int x, int y) {
-  _tgt->setCursor(BUDDY_X_CENTER + (x - BUDDY_X_CENTER) * _scale, y * _scale);
+  _tgt->setCursor(BUDDY_X_CENTER + (x - BUDDY_X_CENTER) * _scale, (y + _yOffset) * _scale);
 }
 void buddySetColor(uint16_t fg)   { _tgt->setTextColor(fg, BUDDY_BG); }
 void buddyPrint(const char* s)    { _tgt->setTextSize(_scale); _tgt->print(s); }
@@ -170,8 +171,9 @@ void buddySetPeek(bool peek) {
 // clearing. Advances the frame counter so animation runs even when
 // buddyTick is bypassed.
 // Landscape clock callsite — always 1×.
-void buddyRenderTo(TFT_eSPI* tgt, uint8_t personaState) {
+void buddyRenderTo(TFT_eSPI* tgt, uint8_t personaState, int16_t yOffset) {
   uint8_t prevS = _scale; _scale = 1;
+  int16_t prevY = _yOffset; _yOffset = yOffset;
   if (personaState >= 7) personaState = B_IDLE;
   uint32_t now = millis();
   if ((int32_t)(now - nextTickAt) >= 0) { nextTickAt = now + TICK_MS; tickCount++; }
@@ -179,7 +181,7 @@ void buddyRenderTo(TFT_eSPI* tgt, uint8_t personaState) {
   _tgt = tgt;
   const Species* sp = SPECIES_TABLE[currentSpeciesIdx];
   if (sp->states[personaState]) sp->states[personaState](tickCount);
-  _tgt = prev; _scale = prevS;
+  _tgt = prev; _scale = prevS; _yOffset = prevY;
 }
 
 void buddyTick(uint8_t personaState) {

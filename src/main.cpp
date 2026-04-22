@@ -548,21 +548,21 @@ static void draw_pet_selector() {
   sp.setTextDatum(TC_DATUM);
   sp.setTextColor(TFT_WHITE, TFT_BLACK);
   sp.setTextSize(2);
-  sp.drawString("Choose Your Buddy", 120, 20);
-  // Preview the selected species at 1x scale
-  buddyRenderTo(&sp, P_IDLE);
+  sp.drawString("Select Buddy", 120, 40);
+  // Preview the selected species at 1x scale, shifted down for round-LCD balance
+  buddyRenderTo(&sp, P_IDLE, 20);
   // Show species name
   sp.setTextDatum(MC_DATUM);
   sp.setTextSize(2);
   sp.setTextColor(TFT_YELLOW, TFT_BLACK);
   const char* name = buddySpeciesNameByIdx(selectorPreviewIdx);
-  if (name) sp.drawString(name, 120, 200);
-  // Hints
-  sp.setTextDatum(TL_DATUM);
+  if (name) sp.drawString(name, 120, 145);
+  // Hints — centered and raised to stay inside the round display
+  sp.setTextDatum(TC_DATUM);
   sp.setTextSize(1);
   sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
-  sp.setCursor(30, 220); sp.print("CW/CCW: browse");
-  sp.setCursor(150, 220); sp.print("CLICK: confirm");
+  sp.drawString("Rotate to browse", 120, 180);
+  sp.drawString("Click to select", 120, 195);
   sp.pushSprite(0, 0);
 }
 
