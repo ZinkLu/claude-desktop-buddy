@@ -51,16 +51,16 @@ These surfaced during B's hardware verification but were deferred:
 - **Tickle threshold strict** — 5 events in 250 ms ≈ 20 Hz. Normal rotation produces 4 Hz. User reverted an earlier loosening attempt (`9786213` → reverted in `eb22941`). Revisit during D1 with better motor feedback.
 - **Not yet verified on device** — Info pages content (CLAUDE live data, SYSTEM uptime/MAC, CREDITS), Pet 3-pulse greeting / 2-pulse bye, 30-s "fell asleep" transition, menu help → Info page 0 / about → Info page 3. Treat as smoke tests at the start of the next hardware session, not blockers.
 
-## Sub-project D — gestures + effects + motor upgrade (active next)
+## Sub-project D — motor upgrade + effects
 
 Decomposition:
 
 - **D1 — Motor closed-loop upgrade** (SimpleFOC). Replaces open-loop torque pulses with fine positional control. Refines every existing haptic effect (detent clicks, purr, tickle buzz, edge bump, squish, greeting pulses). Tickle threshold + purr debounce can then be tuned sensibly. Also absorbs the Phase 2-B polish backlog above.
-- **D2 — New gestures**. `BTN_LONG_3000` → manual nap (face-down analog). `ROT_FAST` outside Pet → dizzy trigger + stats update. Edge hard-bump on menus + settings + reset (reuse the on_scroll_edge pattern B already uses for HUD).
+- **D2 — New gestures** ❌ CANCELLED. ~~`BTN_LONG_3000` → manual nap~~ (moved to G). ~~`ROT_FAST` outside Pet → dizzy trigger + stats update~~ (Pet already has fast-rotation interaction; no need to duplicate globally). ~~Edge hard-bump on menus + settings + reset~~ (Pet already has edge feedback; no need on menus).
 - **D3 — One-shot animations**. Celebrate level-up moment (50 K token accumulation). Deep confetti + strong motor wiggle (`hw_motor_wiggle` + pulse series). Runs once per level-up, driven by `statsPollLevelUp()`.
-- **D4 — Clock enrichment**. Small buddy in clock lower area. Mood-based state on clock: Friday afternoon celebrate, weekend hearts, 1-7 am sleep, 10 pm+ dizzy. Upstream buddy did these in its clock render; port the schedule + use buddyRenderTo to paint a compact character alongside the time.
+- **D4 — Clock enrichment** ❌ CANCELLED. ~~Small buddy in clock lower area. Mood-based state on clock: Friday afternoon celebrate, weekend hearts, 1-7 am sleep, 10 pm+ dizzy~~. User confirmed cancellation.
 
-Suggested order: **D2 + D3** first (safe pure-software additions, no motor risk), then **D1** (SimpleFOC is the biggest risk and will want focused debugging), then **D4** (best done after D1 so the clock haptics are polished).
+Suggested order: **D3** first (safe pure-software addition, no motor risk), then **D1** (SimpleFOC is the biggest risk and will want focused debugging).
 
 ## Sub-project E — content (17 species + CJK font)
 
@@ -75,11 +75,11 @@ Suggested order: **D2 + D3** first (safe pure-software additions, no motor risk)
 - Needs: WiFi SSID/password entry UI (menu item + input method), NVS storage, SNTP client, fallback/reconcile logic when both BLE-time and NTP-time arrive.
 - Clock's value increases dramatically once F lands.
 
-## Sub-project G — screen sleep + backlight timeout (newly identified)
+## Sub-project G — screen sleep + backlight timeout ✅ DONE
 
-- Upstream buddy auto-dimmed then cut LDO2 after 30 s idle (`M5.Axp.SetLDO2(false)`). Phase 1 flagged this as "future follow-up" but never implemented.
-- X-Knob path: ledc PWM to 0 + optional deep sleep with EXT0 wake (same mechanism as the menu's Turn Off — just triggered by inactivity).
-- Low priority until user runs on battery regularly.
+- **Status**: 已实现 PWM 变暗到 10%。
+- **Hardware constraint**: 设备存在 USB 拔插永久断电问题（疑似 MT3608/电池损坏，无法修复），因此不实现 LDO2 切断 / 深度睡眠 + EXT0 唤醒。
+- **Implementation**: ledc PWM 降至 10%，旋转/点击立即恢复用户设置亮度。30 秒无操作触发，可设置开关。
 
 ## Open hardware issues
 
