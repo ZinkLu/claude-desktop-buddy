@@ -11,14 +11,14 @@ struct TamaState {
   bool     recentlyCompleted;
   uint32_t tokensToday;
   uint32_t lastUpdated;
-  char     msg[24];
+  char     msg[48];          // Was 24, now 48 for UTF-8 CJK (up to ~16 chars)
   bool     connected;
-  char     lines[8][92];
+  char     lines[8][128];    // Was 92, now 128 for UTF-8 expansion
   uint8_t  nLines;
   uint16_t lineGen;          // bumps when lines change — lets UI reset scroll
   char     promptId[40];     // pending permission request ID; empty = no prompt
-  char     promptTool[20];
-  char     promptHint[44];
+  char     promptTool[48];   // Was 20, now 48 for UTF-8 CJK
+  char     promptHint[80];   // Was 44, now 80 for UTF-8 CJK
 };
 
 // ---------------------------------------------------------------------------

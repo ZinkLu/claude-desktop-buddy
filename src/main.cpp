@@ -17,6 +17,7 @@
 #include "pet_pages.h"
 #include "pet_gesture.h"
 #include "hw_idle.h"
+#include "font_cjk.h"
 
 enum PersonaState { P_SLEEP, P_IDLE, P_BUSY, P_ATTENTION, P_CELEBRATE, P_DIZZY, P_HEART };
 
@@ -189,10 +190,10 @@ static void drawApproval() {
   sp.setCursor(32, 166);
   sp.print(line);
 
-  sp.setTextColor(TFT_WHITE, bg);
-  sp.setTextSize(2);
-  sp.setCursor(32, 178);
-  sp.print(tama.promptTool[0] ? tama.promptTool : "?");
+  // Prompt tool - use CJK rendering for Chinese support
+  cjk_set_target(&sp);
+  cjk_draw_string(32, 178, tama.promptTool[0] ? tama.promptTool : "?",
+                  TFT_WHITE, bg, 2);
   sp.setTextSize(1);
 
   sp.setCursor(40, 205);
@@ -203,9 +204,7 @@ static void drawApproval() {
   else                { sp.setTextColor(TFT_DARKGREY, bg);  sp.print("  deny"); }
 }
 
-// Greedy word-wrap into fixed-width rows. Continuation rows get a leading
-// space. Returns number of rows written. Row buffer must be >= width + 1
-// bytes (the +1 is for the null terminator).
+// Greedy word-wrap into fixed-width rows (ASCII only, kept for compatibility).
 static uint8_t wrapInto(const char* in, char out[][32], uint8_t maxRows, uint8_t width) {
   uint8_t row = 0, col = 0;
   const char* p = in;
@@ -233,6 +232,88 @@ static uint8_t wrapInto(const char* in, char out[][32], uint8_t maxRows, uint8_t
     memcpy(&out[row][col], w, wlen); col += wlen;
   }
   if (col > 0 && row < maxRows) { out[row][col] = 0; row++; }
+  return row;
+}
+
+// UTF-8 aware word wrap. maxCols = max codepoints per row.
+// Each output row buffer must be >= maxCols * 3 + 1 bytes.
+// CJK characters count as 1 column each (same width as ASCII at size 1).
+static uint8_t wrapIntoUtf8(const char* in, char out[][128], uint8_t maxRows, uint8_t maxCols) {
+  uint8_t row = 0;
+  const char* p = in;
+
+  while (*p && row < maxRows) {
+    uint8_t col = 0;      // codepoint count in current row
+    uint8_t colBytes = 0; // byte count in current row
+
+    while (*p && col < maxCols) {
+      // Skip leading spaces at start of row
+      if (col == 0) {
+        while (*p == ' ') p++;
+      }
+
+      if (!*p) break;
+
+      // Measure next word (sequence of non-space codepoints)
+      const char* wordStart = p;
+      uint8_t wordChars = 0;
+      uint8_t wordBytes = 0;
+
+      while (*p && *p != ' ') {
+        const char* cpStart = p;
+        uint8_t c = (uint8_t)*p;
+        int cpBytes = 1;
+        if (c >= 0x80) {
+          if ((c & 0xE0) == 0xC0) cpBytes = 2;
+          else if ((c & 0xF0) == 0xE0) cpBytes = 3;
+          else if ((c & 0xF8) == 0xF0) cpBytes = 4;
+        }
+        // Advance past this codepoint
+        for (int i = 0; i < cpBytes && *p; i++) p++;
+        wordChars++;
+        wordBytes += (p - cpStart);
+      }
+
+      if (wordChars == 0) break;
+
+      // Check if word fits in current row
+      uint8_t need = (col > 0 ? 1 : 0) + wordChars; // space + word
+
+      if (col + need > maxCols && col > 0) {
+        // Word doesn't fit, finish current row
+        out[row][colBytes] = 0;
+        row++;
+        if (row >= maxRows) return row;
+        col = 0;
+        colBytes = 0;
+        // Don't consume word, let next row handle it
+        p = wordStart;
+        continue;
+      }
+
+      // Add space if not at start of row
+      if (col > 0) {
+        out[row][colBytes++] = ' ';
+        col++;
+      }
+
+      // Copy word bytes
+      for (uint8_t i = 0; i < wordBytes; i++) {
+        out[row][colBytes++] = wordStart[i];
+      }
+      col += wordChars;
+
+      // Skip trailing space
+      if (*p == ' ') p++;
+    }
+
+    // Terminate current row
+    if (colBytes > 0 || col > 0) {
+      out[row][colBytes] = 0;
+      row++;
+    }
+  }
+
   return row;
 }
 
@@ -264,10 +345,10 @@ static void drawHudSimple() {
     return;
   }
 
-  static char disp[32][32];
+  static char disp[32][128];
   uint8_t nDisp = 0;
   for (uint8_t i = 0; i < tama.nLines && nDisp < 32; i++) {
-    uint8_t got = wrapInto(tama.lines[i], &disp[nDisp], 32 - nDisp, WIDTH);
+    uint8_t got = wrapIntoUtf8(tama.lines[i], &disp[nDisp], 32 - nDisp, WIDTH);
     nDisp += got;
   }
   if (nDisp == 0) {
@@ -283,8 +364,15 @@ static void drawHudSimple() {
   int end = (int)nDisp - scroll;
   int start = end - SHOW; if (start < 0) start = 0;
 
+  cjk_set_target(&sp);
   for (int i = 0; start + i < end; i++) {
-    sp.drawString(disp[start + i], 120, TOP + 4 + i * LH);
+    // Determine color based on content (keep existing logic)
+    uint16_t color = TFT_LIGHTGREY;
+    const char* line = disp[start + i];
+    if (strncmp(line, "[approved]", 10) == 0) color = TFT_GREEN;
+    else if (strncmp(line, "[denied]", 8) == 0) color = TFT_RED;
+
+    cjk_draw_string(8, TOP + 4 + i * LH, line, color, TFT_BLACK, 1);
   }
 
   sp.setTextDatum(TL_DATUM);
@@ -401,6 +489,7 @@ void setup() {
   if (!LittleFS.begin(true)) Serial.println("LittleFS mount failed");
 
   hw_display_init();
+  cjk_font_init();
   hw_input_init();
   hw_motor_init();
   hw_idle_init();
