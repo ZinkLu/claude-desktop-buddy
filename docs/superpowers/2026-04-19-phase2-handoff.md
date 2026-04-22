@@ -14,7 +14,7 @@ The user and Claude split the loop as follows:
   - `pio run -t upload && pio device monitor`
   - Reports serial log output when something is off.
   - Reports visual / tactile behavior.
-- **User triggers merges and PRs** via GitHub UI (Claude can't auth as ZinkLu from local gh).
+- **Claude creates PRs** via `gh` CLI (authenticated as ZinkLu). User reviews and merges via GitHub UI.
 - **Claude commits and pushes** to whichever feature branch is active. After merge, Claude pulls `main` locally.
 
 Workflow skills to invoke when starting a new sub-project, in order:
@@ -33,7 +33,7 @@ Branch naming: `phase-2d`, `phase-2e`, etc., cut from `main`. PRs via `https://g
 - LEDC channels: 0 = TFT backlight PWM (5 kHz); 2, 4, 6 = motor phases (20 kHz). Each channel must use a unique timer (`timer = channel / 2` on Arduino-ESP32), so motor phases can't squat on ch 1/3/5.
 - USB CDC: `-DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=1` required or Serial prints go to UART0 which is not wired on X-Knob.
 - `stats.h` / `data.h` / `xfer.h` are header-only with file-scope static state. ONLY include them from `src/main.cpp`. Any other .cpp that needs a setting must use an `extern` bridge function defined in main.cpp (examples: `current_haptic_level()`, `panel_brightness()`, `info_bt_name()`, `pet_level()` etc.).
-- `gh` CLI is authenticated as a different GitHub user — it cannot create PRs on ZinkLu's fork. User does that manually.
+- `gh` CLI is authenticated as the correct GitHub user — PRs are created automatically by Claude.
 
 ## Completed sub-projects
 
