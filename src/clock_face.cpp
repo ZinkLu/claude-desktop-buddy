@@ -59,47 +59,46 @@ void clock_face_invalidate() {
 }
 
 static void paintInvalid() {
-  TFT_eSprite& sp = hw_display_sprite();
-  sp.fillSprite(TFT_BLACK);
+  Arduino_GFX* canvas = hw_display_canvas();
+  canvas->fillScreen(BLACK);
 
-  sp.setTextDatum(MC_DATUM);
-  sp.setTextColor(TFT_WHITE, TFT_BLACK);
-  sp.setTextSize(6);
-  sp.drawString("--:--", 120, 80);
+  canvas->setTextColor(WHITE, BLACK);
+  canvas->setTextSize(6);
+  canvas->setCursor(120 - 6*6*3, 80 - 4*6); canvas->print("--:--");
 
-  sp.setTextSize(1);
-  sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
-  sp.drawString("(no time)", 120, 130);
-  sp.drawString("waiting for", 120, 150);
-  sp.drawString("Claude", 120, 160);
-
-  sp.setTextDatum(TL_DATUM);
-  sp.pushSprite(0, 0);
+  canvas->setTextSize(1);
+  canvas->setTextColor(DARKGREY, BLACK);
+  canvas->setCursor(120 - 7*3, 130 - 4); canvas->print("(no time)");
+  canvas->setCursor(120 - 11*3, 150 - 4); canvas->print("waiting for");
+  canvas->setCursor(120 - 6*3, 160 - 4); canvas->print("Claude");
 }
 
 static void paintValid(const struct tm& t) {
   char hm[6], ss[3], date[16];
   clock_face_internal::fmt_time_fields(t, hm, ss, date);
 
-  TFT_eSprite& sp = hw_display_sprite();
-  sp.fillSprite(TFT_BLACK);
+  Arduino_GFX* canvas = hw_display_canvas();
+  canvas->fillScreen(BLACK);
 
-  sp.setTextDatum(MC_DATUM);
+  canvas->setTextColor(WHITE, BLACK);
+  canvas->setTextSize(6);
+  int16_t tw = strlen(hm) * 6 * 6;
+  canvas->setCursor(120 - tw/2, 70 - 4*6);
+  canvas->print(hm);
 
-  sp.setTextColor(TFT_WHITE, TFT_BLACK);
-  sp.setTextSize(6);
-  sp.drawString(hm, 120, 70);
+  canvas->setTextColor(LIGHTGREY, BLACK);
+  canvas->setTextSize(3);
+  tw = strlen(ss) * 6 * 3;
+  canvas->setCursor(120 - tw/2, 135 - 4*3);
+  canvas->print(ss);
 
-  sp.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-  sp.setTextSize(3);
-  sp.drawString(ss, 120, 135);
+  canvas->setTextColor(DARKGREY, BLACK);
+  canvas->setTextSize(2);
+  tw = strlen(date) * 6 * 2;
+  canvas->setCursor(120 - tw/2, 180 - 4*2);
+  canvas->print(date);
 
-  sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
-  sp.setTextSize(2);
-  sp.drawString(date, 120, 180);
-
-  sp.setTextDatum(TL_DATUM);
-  sp.pushSprite(0, 0);
+  hw_display_flush();
 }
 
 void clock_face_tick() {
@@ -111,7 +110,7 @@ void clock_face_tick() {
   if (_valid != _lastValid) {
     _lastValid = _valid;
     _cachedMin = -1; _cachedSec = -1; _cachedDay = -1;
-    if (!_valid) { paintInvalid(); return; }
+    if (!_valid) { paintInvalid(); hw_display_flush(); return; }
     // else fall through to the valid branch below for first paint
   }
 

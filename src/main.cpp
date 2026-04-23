@@ -19,6 +19,9 @@
 #include "hw_idle.h"
 #include "font_cjk.h"
 
+// Canvas-based rendering: draw to off-screen buffer, flush atomically
+#define canvas (hw_display_canvas())
+
 enum PersonaState { P_SLEEP, P_IDLE, P_BUSY, P_ATTENTION, P_CELEBRATE, P_DIZZY, P_HEART };
 
 static char btName[16] = "Claude";
@@ -173,35 +176,33 @@ static PersonaState derive(const TamaState& s) {
 }
 
 static void drawApproval() {
-  TFT_eSprite& sp = hw_display_sprite();
-  uint16_t bg = TFT_BLACK;
+  uint16_t bg = BLACK;
 
   // Bottom panel. Clear y=148..220 — same region HUD uses, so transitioning
   // between HUD and approval never leaves stale pixels at the boundary.
-  sp.fillRect(0, 148, 240, 72, bg);
-  sp.drawFastHLine(24, 160, 192, TFT_DARKGREY);
+  canvas->fillRect(0, 148, 240, 72, bg);
+  canvas->drawFastHLine(24, 160, 192, DARKGREY);
 
-  sp.setTextDatum(TL_DATUM);
-  sp.setTextSize(1);
+  canvas->setTextSize(1);
   uint32_t waited = (millis() - promptArrivedMs) / 1000;
-  sp.setTextColor(waited >= 10 ? TFT_ORANGE : TFT_DARKGREY, bg);
+  canvas->setTextColor(waited >= 10 ? ORANGE : DARKGREY, bg);
   char line[32];
   snprintf(line, sizeof(line), "approve? %lus", (unsigned long)waited);
-  sp.setCursor(32, 166);
-  sp.print(line);
+  canvas->setCursor(32, 166);
+  canvas->print(line);
 
   // Prompt tool - use CJK rendering for Chinese support
-  cjk_set_target(&sp);
+  cjk_set_target(canvas);
   cjk_draw_string(32, 178, tama.promptTool[0] ? tama.promptTool : "?",
-                  TFT_WHITE, bg, 2);
-  sp.setTextSize(1);
+                  WHITE, bg, 2);
+  canvas->setTextSize(1);
 
-  sp.setCursor(40, 205);
-  if (approvalChoice) { sp.setTextColor(TFT_GREEN, bg);     sp.print("> APPROVE"); }
-  else                { sp.setTextColor(TFT_DARKGREY, bg);  sp.print("  approve"); }
-  sp.setCursor(140, 205);
-  if (!approvalChoice){ sp.setTextColor(TFT_RED, bg);       sp.print("> DENY"); }
-  else                { sp.setTextColor(TFT_DARKGREY, bg);  sp.print("  deny"); }
+  canvas->setCursor(40, 205);
+  if (approvalChoice) { canvas->setTextColor(GREEN, bg);     canvas->print("> APPROVE"); }
+  else                { canvas->setTextColor(DARKGREY, bg);  canvas->print("  approve"); }
+  canvas->setCursor(140, 205);
+  if (!approvalChoice){ canvas->setTextColor(RED, bg);       canvas->print("> DENY"); }
+  else                { canvas->setTextColor(DARKGREY, bg);  canvas->print("  deny"); }
 }
 
 // Greedy word-wrap into fixed-width rows (ASCII only, kept for compatibility).
@@ -318,7 +319,6 @@ static uint8_t wrapIntoUtf8(const char* in, char out[][128], uint8_t maxRows, ui
 }
 
 static void drawHudSimple() {
-  TFT_eSprite& sp = hw_display_sprite();
   // HUD sits in the lower portion of the visible circle (y=150..208).
   // With BUDDY_Y_BASE=40 the character body ends at y=146, leaving room
   // for 4 lines of transcript at y=154/166/178/190. Narrowest row (y=190)
@@ -332,16 +332,18 @@ static void drawHudSimple() {
 
   // Clear y=148..220 — matches drawApproval's region so switching between
   // HUD and approval never leaves stale pixels at the boundary.
-  sp.fillRect(0, 148, 240, 72, TFT_BLACK);
-  sp.setTextSize(1);
-  sp.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-  sp.setTextDatum(MC_DATUM);
+  canvas->fillRect(0, 148, 240, 72, BLACK);
+  canvas->setTextSize(1);
+  canvas->setTextColor(LIGHTGREY, BLACK);
 
   if (tama.nLines == 0) {
     input_fsm_set_hud_scroll_max(0);
     const char* line = tama.msg;
-    if (line && *line) sp.drawString(line, 120, TOP + 20);
-    sp.setTextDatum(TL_DATUM);
+    if (line && *line) {
+      int16_t tw = strlen(line) * 6 * 1;
+      canvas->setCursor(120 - tw/2, TOP + 20 - 4*1);
+      canvas->print(line);
+    }
     return;
   }
 
@@ -353,7 +355,6 @@ static void drawHudSimple() {
   }
   if (nDisp == 0) {
     input_fsm_set_hud_scroll_max(0);
-    sp.setTextDatum(TL_DATUM);
     return;
   }
 
@@ -364,18 +365,16 @@ static void drawHudSimple() {
   int end = (int)nDisp - scroll;
   int start = end - SHOW; if (start < 0) start = 0;
 
-  cjk_set_target(&sp);
+  cjk_set_target(canvas);
   for (int i = 0; start + i < end; i++) {
     // Determine color based on content (keep existing logic)
-    uint16_t color = TFT_LIGHTGREY;
+    uint16_t color = LIGHTGREY;
     const char* line = disp[start + i];
-    if (strncmp(line, "[approved]", 10) == 0) color = TFT_GREEN;
-    else if (strncmp(line, "[denied]", 8) == 0) color = TFT_RED;
+    if (strncmp(line, "[approved]", 10) == 0) color = GREEN;
+    else if (strncmp(line, "[denied]", 8) == 0) color = RED;
 
-    cjk_draw_string(8, TOP + 4 + i * LH, line, color, TFT_BLACK, 1);
+    cjk_draw_string(8, TOP + 4 + i * LH, line, color, BLACK, 1);
   }
-
-  sp.setTextDatum(TL_DATUM);
 }
 
 // Pet mode runtime state
@@ -491,7 +490,7 @@ void setup() {
   hw_display_init();
   cjk_font_init();
   hw_input_init();
-  hw_motor_init();
+  hw_motor_init_foc();   // D1: SimpleFOC closed-loop (replaces open-loop hw_motor_init)
   hw_idle_init();
 
   statsLoad();
@@ -543,27 +542,33 @@ void setup() {
 
 // E1: Pet selector renderer (defined outside loop)
 static void draw_pet_selector() {
-  TFT_eSprite& sp = hw_display_sprite();
-  sp.fillSprite(TFT_BLACK);
-  sp.setTextDatum(TC_DATUM);
-  sp.setTextColor(TFT_WHITE, TFT_BLACK);
-  sp.setTextSize(2);
-  sp.drawString("Select Buddy", 120, 40);
+  canvas->fillScreen(BLACK);
+  canvas->setTextColor(WHITE, BLACK);
+  canvas->setTextSize(2);
+  int16_t tw = strlen("Select Buddy") * 6 * 2;
+  canvas->setCursor(120 - tw/2, 40);
+  canvas->print("Select Buddy");
   // Preview the selected species at 1x scale, shifted down for round-LCD balance
-  buddyRenderTo(&sp, P_IDLE, 20);
+  buddyRenderTo(canvas, P_IDLE, 20);
   // Show species name
-  sp.setTextDatum(MC_DATUM);
-  sp.setTextSize(2);
-  sp.setTextColor(TFT_YELLOW, TFT_BLACK);
+  canvas->setTextSize(2);
+  canvas->setTextColor(YELLOW, BLACK);
   const char* name = buddySpeciesNameByIdx(selectorPreviewIdx);
-  if (name) sp.drawString(name, 120, 145);
+  if (name) {
+    tw = strlen(name) * 6 * 2;
+    canvas->setCursor(120 - tw/2, 145 - 4*2);
+    canvas->print(name);
+  }
   // Hints — centered and raised to stay inside the round display
-  sp.setTextDatum(TC_DATUM);
-  sp.setTextSize(1);
-  sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
-  sp.drawString("Rotate to browse", 120, 180);
-  sp.drawString("Click to select", 120, 195);
-  sp.pushSprite(0, 0);
+  canvas->setTextSize(1);
+  canvas->setTextColor(DARKGREY, BLACK);
+  tw = strlen("Rotate to browse") * 6 * 1;
+  canvas->setCursor(120 - tw/2, 180 - 4*1);
+  canvas->print("Rotate to browse");
+  tw = strlen("Click to select") * 6 * 1;
+  canvas->setCursor(120 - tw/2, 195 - 4*1);
+  canvas->print("Click to select");
+  hw_display_flush();
 }
 
 void loop() {
@@ -585,19 +590,20 @@ void loop() {
       Serial.printf("[nap] woke after %lu seconds\n", (unsigned long)(napDurationMs / 1000));
     } else {
       // Render nap screen
-      TFT_eSprite& sp = hw_display_sprite();
-      if (firstFrame) { sp.fillSprite(TFT_BLACK); firstFrame = false; }
+      if (firstFrame) { canvas->fillScreen(BLACK); firstFrame = false; }
       hw_display_set_brightness(20);  // 10% brightness
       buddyTick((uint8_t)P_SLEEP);
       if (now < napHintUntilMs) {
-        sp.setTextDatum(MC_DATUM);
-        sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
-        sp.setTextSize(1);
-        sp.drawString("Rotate or Click", 120, 58);
-        sp.drawString("to wake", 120, 70);
-        sp.setTextDatum(TL_DATUM);
+        canvas->setTextColor(DARKGREY, BLACK);
+        canvas->setTextSize(1);
+        int16_t tw = strlen("Rotate or Click") * 6 * 1;
+        canvas->setCursor(120 - tw/2, 58 - 4*1);
+        canvas->print("Rotate or Click");
+        tw = strlen("to wake") * 6 * 1;
+        canvas->setCursor(120 - tw/2, 70 - 4*1);
+        canvas->print("to wake");
       }
-      sp.pushSprite(0, 0);
+      hw_display_flush();
       hw_motor_tick(now);
       delay(50);
       return;
@@ -786,8 +792,14 @@ void loop() {
   }
 
   // Render
-  TFT_eSprite& sp = hw_display_sprite();
-  if (firstFrame) { sp.fillSprite(TFT_BLACK); firstFrame = false; }
+  // Track mode changes and clear screen only on transition to avoid flicker
+  static DisplayMode prevRenderMode = DISP_HOME;
+  DisplayMode currRenderMode = input_fsm_view().mode;
+  if (currRenderMode != prevRenderMode) {
+    canvas->fillScreen(BLACK);
+    prevRenderMode = currRenderMode;
+  }
+  if (firstFrame) { canvas->fillScreen(BLACK); firstFrame = false; }
 
   // Pet mode purr safety: stop if user hasn't stroked for 3 s;
   // after 30 s of total stroking, transition to fell-asleep state.
@@ -837,25 +849,28 @@ void loop() {
         characterSetState((uint8_t)renderState);
         characterTick();
       } else {
-        sp.setTextDatum(MC_DATUM);
-        sp.setTextColor(TFT_DARKGREY, TFT_BLACK);
-        sp.drawString("no character", 120, 120);
-        sp.setTextDatum(TL_DATUM);
+        canvas->setTextColor(DARKGREY, BLACK);
+        canvas->setTextSize(1);
+        int16_t tw = strlen("no character") * 6 * 1;
+        canvas->setCursor(120 - tw/2, 120 - 4*1);
+        canvas->print("no character");
       }
       // D2-A: Show progressive long-press hint.
       // Position at y=65 — far enough from the circular top edge so the
       // text stays fully visible on the 240×240 round LCD (GC9A01).
       if ((lpState == LP_CONFIRMING || lpState == LP_HINT_HOLD) && !inPrompt) {
-        sp.setTextDatum(MC_DATUM);
-        sp.setTextColor(TFT_WHITE, TFT_BLACK);
-        sp.setTextSize(1);
-        sp.drawString("Release = Menu", 120, 58);
-        sp.drawString("Hold = Nap",     120, 70);
-        sp.setTextDatum(TL_DATUM);
+        canvas->setTextColor(WHITE, BLACK);
+        canvas->setTextSize(1);
+        int16_t tw = strlen("Release = Menu") * 6 * 1;
+        canvas->setCursor(120 - tw/2, 58 - 4*1);
+        canvas->print("Release = Menu");
+        tw = strlen("Hold = Nap") * 6 * 1;
+        canvas->setCursor(120 - tw/2, 70 - 4*1);
+        canvas->print("Hold = Nap");
       }
       if (inPrompt)            drawApproval();    // approvals always show
       else if (settings().hud) drawHudSimple();   // transcript gates only passive HUD
-      sp.pushSprite(0, 0);
+      hw_display_flush();
       break;
     }
   }

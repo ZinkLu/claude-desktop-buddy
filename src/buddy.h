@@ -8,8 +8,9 @@
 void buddyInit();
 void buddyTick(uint8_t personaState);
 void buddyInvalidate();
-class TFT_eSPI;
-void buddyRenderTo(TFT_eSPI* tgt, uint8_t personaState, int16_t yOffset = 0);
+class Arduino_GFX;
+class Arduino_GFX_Canvas;
+void buddyRenderTo(Arduino_GFX* canvas, uint8_t personaState, int16_t yOffset = 0);
 void buddySetSpecies(const char* name);
 void buddySetSpeciesIdx(uint8_t idx);
 void buddyNextSpecies();

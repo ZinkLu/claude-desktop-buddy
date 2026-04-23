@@ -37,3 +37,49 @@ void hw_motor_vibrate(uint16_t duration_ms, uint8_t level);
 // Drive purr / pulse_series / vibrate state machines. Call every main
 // loop iteration. Cheap when all states are idle.
 void hw_motor_tick(uint32_t now_ms);
+
+// --- Software spring / detent API (D1) ----------------------------------
+// When spring mode is enabled the motor behaves like a sprung knob:
+//   • Within the range, torque rises based on distance from center
+//   • At the boundary the stiffness jumps (endstop_strength)
+//   • Releasing the knob snaps it back to center
+//   • Supports "virtual detents" — position snaps at regular intervals
+
+// Enable spring mode with specified parameters.
+// center_deg: center position in degrees (0-360)
+// range_deg: total working range (±range_deg/2 from center)
+// max_strength: max torque strength (0-255 mapped from voltage)
+// curve_exp: torque curve exponent (1.0=linear, 1.5=default "ease-in")
+void hw_motor_set_spring(float center_deg, float range_deg,
+                         float max_strength, float curve_exp);
+void hw_motor_disable_spring();
+bool hw_motor_spring_enabled();
+
+// Virtual detent configuration (optional, for "notched" feel)
+// When enabled, the knob snaps to discrete positions within the range.
+void hw_motor_set_detents(float position_width_deg, float snap_point,
+                          float detent_strength, float endstop_strength);
+void hw_motor_disable_detents();
+
+// Current spring position (0 = center, can be negative)
+float hw_motor_spring_position();
+
+// Reset spring center to current angle
+void hw_motor_spring_recenter();
+
+// Read current encoder angle (0-360°)
+float hw_motor_get_current_angle();
+
+// Get current shaft angle from FOC (in degrees). Safe to call from any core.
+float hw_motor_foc_angle_deg();
+
+// --- SimpleFOC closed-loop API (D1) --------------------------------------
+// Initialize SimpleFOC motor control in a FreeRTOS task on Core 1.
+// This replaces open-loop pulses with smooth torque control.
+
+void hw_motor_init_foc();
+bool hw_motor_foc_enabled();
+int32_t hw_motor_position();
+
+// Configure detent feel (width, strength, snap threshold)
+void hw_motor_set_detent_config(float width_deg, float strength, float snap);

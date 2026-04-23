@@ -1,4 +1,5 @@
 #include "hw_input.h"
+#include "hw_motor.h"  // for hw_motor_foc_enabled() / hw_motor_foc_angle_deg()
 
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -151,7 +152,14 @@ void hw_input_init() {
 InputEvent hw_input_poll() {
   uint32_t now = millis();
 
-  float d = mt6701_read_deg();
+  float d;
+  if (hw_motor_foc_enabled()) {
+    // FOC is active: read angle from closed-loop task (avoids SPI/bitbang conflict)
+    d = hw_motor_foc_angle_deg();
+  } else {
+    d = mt6701_read_deg();
+  }
+
   if (!isnan(d) && !isnan(_lastRawDeg)) {
     float diff = d - _lastRawDeg;
     if (diff >  180.0f) diff -= 360.0f;

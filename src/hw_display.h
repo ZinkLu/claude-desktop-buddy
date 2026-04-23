@@ -1,7 +1,7 @@
 #pragma once
-#include <TFT_eSPI.h>
+#include <Arduino_GFX_Library.h>
 
-void          hw_display_init();
-void          hw_display_set_brightness(uint8_t pct);  // 0..100
-TFT_eSPI&     hw_display_tft();
-TFT_eSprite&  hw_display_sprite();
+void hw_display_init();
+Arduino_GFX* hw_display_canvas();
+void hw_display_flush();
+void hw_display_set_brightness(uint8_t percent);

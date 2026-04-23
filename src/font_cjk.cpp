@@ -5,7 +5,7 @@
 // ---------------------------------------------------------------------------
 //  Internal state
 // ---------------------------------------------------------------------------
-static TFT_eSprite* _cjk_target = nullptr;
+static Arduino_GFX* _cjk_target = nullptr;
 
 // ---------------------------------------------------------------------------
 //  UTF-8 decoder
@@ -87,7 +87,7 @@ static void draw_glyph_1x(int x, int y, int glyph_idx, uint16_t color, uint16_t 
       uint8_t byte = pgm_read_byte(&bitmap[byte_idx]);
       bool pixel = (byte >> bit_idx) & 1;
 
-      if (pixel || bg != TFT_BLACK) {
+      if (pixel || bg != BLACK) {
         _cjk_target->drawPixel(x + col, y + row, pixel ? color : bg);
       }
     }
@@ -104,7 +104,7 @@ static void draw_glyph_2x(int x, int y, int glyph_idx, uint16_t color, uint16_t 
       int bit_idx = 7 - (col & 7);
       uint8_t byte = pgm_read_byte(&bitmap[byte_idx]);
       bool pixel = (byte >> bit_idx) & 1;
-      if (pixel || bg != TFT_BLACK) {
+      if (pixel || bg != BLACK) {
         uint16_t px_color = pixel ? color : bg;
         _cjk_target->fillRect(x + col * 2, y + row * 2, 2, 2, px_color);
       }
@@ -120,8 +120,8 @@ void cjk_font_init() {
   // Nothing needed for PROGMEM data
 }
 
-void cjk_set_target(TFT_eSprite* sprite) {
-  _cjk_target = sprite;
+void cjk_set_target(Arduino_GFX* gfx) {
+  _cjk_target = gfx;
 }
 
 void cjk_draw_string(int x, int y, const char* utf8_str,

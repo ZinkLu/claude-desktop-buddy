@@ -1,12 +1,13 @@
 #pragma once
 #include <stdint.h>
-#include <TFT_eSPI.h>
+#include <Arduino_GFX_Library.h>
 
 // Initialize CJK font system (call once at startup)
 void cjk_font_init();
 
-// Set target sprite for rendering
-void cjk_set_target(TFT_eSprite* sprite);
+// Set target for rendering
+class Arduino_GFX;
+void cjk_set_target(Arduino_GFX* canvas);
 
 // Draw UTF-8 string with mixed ASCII/CJK rendering
 // font_size: 1 = small (HUD, 12px CJK), 2 = large (prompts, 24px scaled CJK)

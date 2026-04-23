@@ -1,41 +1,46 @@
 #include "hw_display.h"
 #include <Arduino.h>
 
-static TFT_eSPI _tft;
-static TFT_eSprite _spr(&_tft);
+// X-Knob SPI pins
+// IMPORTANT: MISO is GPIO 13, shared with backlight!
+static Arduino_DataBus *bus = new Arduino_HWSPI(14 /* DC */, 10 /* CS */, 12 /* SCLK */, 11 /* MOSI */, 13 /* MISO */);
+static Arduino_GFX *gfx = new Arduino_GC9A01(bus, 9 /* RST */, 2 /* rotation */, true /* IPS */);
+// Use Canvas as framebuffer: draw in memory, then flush to screen atomically
+static Arduino_GFX *canvas = new Arduino_Canvas(240, 240, gfx);
 
-static const int BLK_PIN = 13;
-static const int BLK_CH  = 0;
+static const int BLK_PIN = 13;  // Shared with MISO
 
 void hw_display_init() {
-  ledcSetup(BLK_CH, 5000, 8);
-  ledcAttachPin(BLK_PIN, BLK_CH);
-  hw_display_set_brightness(0);  // off while init
-
-  _tft.init();
-  _tft.setRotation(0);
-  _tft.fillScreen(TFT_BLACK);
-
-  // X-Knob panel uses inverted color (matches upstream X-Knob hal/lcd.cpp).
-  // If calibration shows cyan-for-red etc., toggle this to false.
-  _tft.invertDisplay(true);
-
-  _spr.setColorDepth(16);
-  _spr.createSprite(240, 240);
-  if (_spr.getPointer() == nullptr) {
-    Serial.println("hw_display: sprite alloc FAILED");
-  } else {
-    Serial.printf("hw_display: sprite at %p, psram free %u KB\n",
-                  _spr.getPointer(), (unsigned)(ESP.getFreePsram() / 1024));
-  }
-
-  hw_display_set_brightness(50);
+  Serial.println("[display] init start");
+  
+  // Step 1: Initialize GFX first (X-Knob original order)
+  gfx->begin();
+  Serial.println("[display] gfx begin done");
+  
+  // Step 2: Now configure backlight PWM
+  // Use 20kHz to avoid visible flickering
+  ledcSetup(0, 20000, 8);
+  ledcAttachPin(BLK_PIN, 0);
+  ledcWrite(0, 255);  // Full brightness
+  Serial.println("[display] backlight ON");
+  
+  // Initialize canvas (memory framebuffer)
+  canvas->begin();
+  canvas->fillScreen(BLACK);
+  Serial.println("[display] canvas ready");
 }
 
-void hw_display_set_brightness(uint8_t pct) {
-  if (pct > 100) pct = 100;
-  ledcWrite(BLK_CH, (pct * 255) / 100);
+// Return canvas for drawing (all UI draws to canvas, not directly to screen)
+Arduino_GFX* hw_display_canvas() {
+  return canvas;
 }
 
-TFT_eSPI&     hw_display_tft()    { return _tft; }
-TFT_eSprite&  hw_display_sprite() { return _spr; }
+// Flush canvas to screen atomically (no flicker)
+void hw_display_flush() {
+  canvas->flush();
+}
+
+void hw_display_set_brightness(uint8_t percent) {
+  if (percent > 100) percent = 100;
+  ledcWrite(0, percent * 255 / 100);
+}
