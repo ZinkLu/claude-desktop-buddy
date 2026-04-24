@@ -17,11 +17,17 @@ uint32_t hw_motor_busy_until();
 // True when a one-shot or continuous effect is playing.
 bool hw_motor_effect_active();
 
+// True only when a one-shot effect (click/wiggle/vibrate/pulse) is playing.
+// Purr is excluded — use this to filter motor-induced rotation without
+// blocking the sustained rotation that keeps purr alive.
+bool hw_motor_oneshot_active();
+
 // --- One-shot haptic effects ---------------------------------------------
 // All enqueue immediately and return; Core 1 plays them non-blocking.
 
 void hw_motor_click(uint8_t strength);   // strength 0..255, ~30 ms pulse
 void hw_motor_click_default();           // click at current haptic level
+void hw_motor_click_min();               // click at minimum level (for haptic=0 feedback)
 void hw_motor_wiggle();                  // L-R-L pattern (~220 ms)
 void hw_motor_pulse_series(uint8_t n, uint16_t gap_ms, uint8_t level);
 void hw_motor_vibrate(uint16_t duration_ms, uint8_t level);

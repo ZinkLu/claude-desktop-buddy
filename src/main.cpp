@@ -96,7 +96,12 @@ static void cycle_haptic(uint8_t) {
   s.haptic = (uint8_t)((s.haptic + 1) % 5);
   settingsSave();
   hw_motor_set_haptic(s.haptic);
-  hw_motor_click_default();
+  // Always give feedback, even at haptic=0 (use minimum level 1 for click)
+  if (s.haptic == 0) {
+    hw_motor_click_min();
+  } else {
+    hw_motor_click_default();
+  }
 }
 
 static void toggle_transcript(bool) {
@@ -420,16 +425,23 @@ static void cb_on_enter_pet() {
   petDizzyUntilMs = 0;
   petSquishUntilMs = 0;
   pet_gesture_reset();
-  hw_motor_pulse_series(3, 100, settings().haptic);
+  // Always play entry pulse, minimum level 1 so user feels mode transition
+  uint8_t h = settings().haptic;
+  hw_motor_pulse_series(3, 100, h > 0 ? h : 1);
 }
 
 static void cb_on_exit_pet() {
   hw_motor_purr_stop();
-  hw_motor_pulse_series(2, 80, settings().haptic);
+  // Always play exit pulse, minimum level 1 so user feels mode transition
+  uint8_t h = settings().haptic;
+  hw_motor_pulse_series(2, 80, h > 0 ? h : 1);
 }
 
 static void cb_on_pet_rotation(bool cw) {
   uint32_t now = millis();
+  // Ignore rotation events caused by motor effects (purr, vibrate, etc.)
+  // to prevent effect-induced shaft movement from re-triggering effects.
+  if (hw_motor_oneshot_active()) return;
   PetGesture g = pet_gesture_step(cw ? EVT_ROT_CW : EVT_ROT_CCW, now);
   Serial.printf("[pet] rot=%s gesture=%d\n", cw ? "CW" : "CCW", (int)g);
   if (g == PGEST_STROKE) {
@@ -453,7 +465,9 @@ static void cb_on_pet_rotation(bool cw) {
     // 3 rapid strong pulses = "stop that" annoyed buzz. Felt through the
     // grip because it's a series of distinct shocks, not a single 40 ms
     // pulse (which gets absorbed by the user's fingers).
-    hw_motor_pulse_series(3, 80, 4);
+    // Use current haptic, but at least level 1 so the feedback is always felt.
+    uint8_t h = settings().haptic;
+    hw_motor_pulse_series(3, 80, h > 0 ? h : 1);
     petDizzyUntilMs = now + PET_DIZZY_DURATION;
     Serial.println("[pet] tickle buzz");
   }
@@ -648,7 +662,9 @@ void loop() {
   if (statsPollLevelUp()) {
     celebrateUntilMs = now + 3000;  // 3 second celebrate
     hw_motor_wiggle();
-    hw_motor_pulse_series(3, 100, settings().haptic);
+    // Always play celebrate pulse, minimum level 1 so user feels the reward
+    uint8_t h = settings().haptic;
+    hw_motor_pulse_series(3, 100, h > 0 ? h : 1);
     Serial.println("[celebrate] level up!");
   }
 

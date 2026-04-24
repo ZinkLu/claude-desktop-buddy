@@ -34,6 +34,17 @@ static void initMySensorCallback(void) {
 
 static GenericSensor sensor = GenericSensor(readMySensorCallback, initMySensorCallback);
 
+// ---- Safety limits ------------------------------------------------------
+// Maximum voltage applied to motor phases. In voltage torque mode, this
+// directly limits current when the motor is stalled (I = V/R). X-Knob uses
+// a small gimbal motor with R≈10Ω, so 3V ≈ 300mA max — well within the
+// DRV8313 2A peak / ESP32-S3 regulator capability.
+static const float MOTOR_VOLTAGE_LIMIT = 3.0f;
+
+// Hard clamp on total torque command (spring + effects + purr) to prevent
+// PID windup or effect stacking from exceeding the safe voltage.
+static const float TOTAL_TORQUE_LIMIT = MOTOR_VOLTAGE_LIMIT;
+
 // ---- Spring / detent config (from X-Knob original) ----------------------
 
 struct SpringConfig {
@@ -115,9 +126,7 @@ static volatile uint32_t _motor_busy_until_ms = 0;
 // continuous and stop/start semantics don't fit the one-shot queue model.
 static volatile bool    _purr_requested = false;
 static volatile uint8_t _purr_level = 0;
-static bool     _purr_active_core1 = false;
-static bool     _purr_phase = false;
-static uint32_t _purr_next_ms = 0;
+static volatile bool _purr_active_core1 = false;
 
 // ---- Haptic level mapping -----------------------------------------------
 
@@ -188,6 +197,7 @@ static void TaskMotorUpdate(void*) {
     motor.linkSensor(&sensor);
 
     driver.voltage_power_supply = 5;
+    driver.voltage_limit = MOTOR_VOLTAGE_LIMIT;
     driver.init();
     motor.linkDriver(&driver);
 
@@ -196,7 +206,7 @@ static void TaskMotorUpdate(void*) {
     motor.PID_velocity.P = 1;
     motor.PID_velocity.I = 0;
     motor.PID_velocity.D = 0.01f;
-    motor.voltage_limit  = 5;
+    motor.voltage_limit  = MOTOR_VOLTAGE_LIMIT;
     motor.LPF_velocity.Tf = 0.01f;
     motor.velocity_limit = 10;
 
@@ -236,8 +246,6 @@ static void TaskMotorUpdate(void*) {
         if (_purr_requested) {
             if (!_purr_active_core1) {
                 _purr_active_core1 = true;
-                _purr_phase = false;
-                _purr_next_ms = now + 150;
                 _motor_busy_until_ms = now + 200;
             }
         } else if (_purr_active_core1) {
@@ -257,14 +265,14 @@ static void TaskMotorUpdate(void*) {
         }
 
         // ---- Purr torque ------------------------------------------------
+        // Continuous sine wave at ~15Hz. Smooth enough to feel like a purr
+        // rather than discrete jolts. Amplitude scales with haptic level.
         float purr_torque = 0;
         if (_purr_active_core1) {
-            if (now >= _purr_next_ms) {
-                _purr_phase = !_purr_phase;
-                _purr_next_ms = now + 150;
-                _motor_busy_until_ms = now + 200;
-            }
-            purr_torque = (_purr_phase ? 1.0f : -1.0f) * level_to_strength(_purr_level) * 5.0f;
+            float phase = (float)(now % 67) / 67.0f * 2.0f * PI; // ~15Hz
+            float amp = 0.5f + level_to_strength(_purr_level) * 1.0f;
+            purr_torque = sinf(phase) * amp;
+            _motor_busy_until_ms = now + 80;
         }
 
         // ---- Spring / detent torque (from X-Knob original) ---------------
@@ -314,6 +322,7 @@ static void TaskMotorUpdate(void*) {
 
         // ---- Final torque: spring + effects overlay ---------------------
         float total = spring_torque + effect_torque + purr_torque;
+        total = CLAMP(total, -TOTAL_TORQUE_LIMIT, TOTAL_TORQUE_LIMIT);
         if (effect_torque != 0 || purr_torque != 0)
             _motor_busy_until_ms = now + 80;
         motor.move(total);
@@ -336,6 +345,10 @@ int32_t hw_motor_position()    { return _position; }
 
 bool hw_motor_effect_active() {
     return _active.type != EFFECT_NONE || _purr_active_core1;
+}
+
+bool hw_motor_oneshot_active() {
+    return _active.type != EFFECT_NONE;
 }
 
 // ---- Effect queue (Core 0 → Core 1, lock-free SPSC) --------------------
@@ -373,12 +386,16 @@ void hw_motor_click_default() {
     hw_motor_click((uint8_t)(level_to_strength(level) * 255));
 }
 
+void hw_motor_click_min() {
+    hw_motor_click((uint8_t)(HAPTIC_STRENGTH[1] * 255));  // level 1 strength
+}
+
 void hw_motor_wiggle() {
     if (!_foc_enabled) return;
     EffectRequest req = {};
     req.type     = EFFECT_WIGGLE;
     req.start_ms = millis();
-    req.strength = HAPTIC_STRENGTH[3];
+    req.strength = level_to_strength(_haptic_level < 5 ? _haptic_level : 4);
     effect_enqueue(req);
 }
 
