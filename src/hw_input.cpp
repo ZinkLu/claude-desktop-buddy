@@ -96,10 +96,7 @@ InputEvent encoderStep(EncoderFSM& s, float currentDeg) {
 #ifdef ARDUINO
 
 static const int BTN_PIN  = 5;
-// MT6701 SSI half-duplex read, bitbanged on three GPIOs. We avoid the
-// Arduino SPIClass abstraction on ESP32-S3 because calling SPIClass(FSPI).begin()
-// on this SDK clobbers TFT_eSPI's HSPI state and silently kills the LCD.
-// Clocking ~1 MHz in software is plenty — MT6701 supports up to 15 MHz SSI.
+// MT6701 pin definitions for bitbang fallback (used before FOC init)
 static const int MT6701_SCLK = 2;
 static const int MT6701_MISO = 1;
 static const int MT6701_SS   = 42;
@@ -108,6 +105,8 @@ static hw_input_internal::ButtonFSM  _btn;
 static hw_input_internal::EncoderFSM _enc;
 static float _accDeg = 0.0f;
 static float _lastRawDeg = NAN;
+static bool    _lastFocEnabled = false;
+static int32_t _lastFocPosition = 0;
 
 // Bitbang one bit pulse. ~1 µs half-period ≈ 500 kHz clock.
 static inline void clk_pulse() {
@@ -152,24 +151,39 @@ void hw_input_init() {
 InputEvent hw_input_poll() {
   uint32_t now = millis();
 
-  float d;
-  if (hw_motor_foc_enabled()) {
-    // FOC is active: read angle from closed-loop task (avoids SPI/bitbang conflict)
-    d = hw_motor_foc_angle_deg();
-  } else {
-    d = mt6701_read_deg();
-  }
+  bool foc_now = hw_motor_foc_enabled();
 
-  if (!isnan(d) && !isnan(_lastRawDeg)) {
-    float diff = d - _lastRawDeg;
-    if (diff >  180.0f) diff -= 360.0f;
-    if (diff < -180.0f) diff += 360.0f;
-    _accDeg += diff;
-    _lastRawDeg = d;
-    InputEvent re = hw_input_internal::encoderStep(_enc, _accDeg);
-    if (re != EVT_NONE) return re;
-  } else if (!isnan(d)) {
-    _lastRawDeg = d;
+  if (foc_now) {
+    // FOC mode: use the motor task's detent position counter.
+    // The motor task increments/decrements _position each time the shaft
+    // crosses a snap point — this is immune to spring-driven shaft
+    // oscillation that plagues raw-angle approaches.
+    if (!_lastFocEnabled) {
+      _lastFocPosition = hw_motor_position();
+      _lastFocEnabled = true;
+      Serial.println("[input] FOC enabled, position-based encoder");
+    }
+    int32_t pos = hw_motor_position();
+    if (pos != _lastFocPosition) {
+      bool cw = (pos > _lastFocPosition);
+      _lastFocPosition = pos;
+      return cw ? EVT_ROT_CW : EVT_ROT_CCW;
+    }
+  } else {
+    // Pre-FOC: bitbang MT6701 angle with 15° threshold
+    _lastFocEnabled = false;
+    float d = mt6701_read_deg();
+    if (!isnan(d)) {
+      if (!isnan(_lastRawDeg)) {
+        float diff = d - _lastRawDeg;
+        if (diff >  180.0f) diff -= 360.0f;
+        if (diff < -180.0f) diff += 360.0f;
+        _accDeg += diff;
+        InputEvent re = hw_input_internal::encoderStep(_enc, _accDeg);
+        if (re != EVT_NONE) { _lastRawDeg = d; return re; }
+      }
+      _lastRawDeg = d;
+    }
   }
 
   bool pressed = (digitalRead(BTN_PIN) == LOW);

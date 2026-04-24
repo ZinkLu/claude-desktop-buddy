@@ -95,7 +95,8 @@ static void cycle_haptic(uint8_t) {
   Settings& s = settings();
   s.haptic = (uint8_t)((s.haptic + 1) % 5);
   settingsSave();
-  hw_motor_click_default();   // fire at new strength so user feels it
+  hw_motor_set_haptic(s.haptic);
+  hw_motor_click_default();
 }
 
 static void toggle_transcript(bool) {
@@ -440,9 +441,9 @@ static void cb_on_pet_rotation(bool cw) {
     petStrokeTotalMs += 200;
     // Only start purr after PURR_DEBOUNCE_MS — gives tickle the chance
     // to preempt if the user is actually spinning fast.
-    if (now - petFirstRotMs >= PURR_DEBOUNCE_MS && !hw_motor_purr_active()) {
-      hw_motor_purr_start(2);
-      Serial.println("[pet] purr start");
+    if (now - petFirstRotMs >= PURR_DEBOUNCE_MS) {
+      hw_motor_purr_start(settings().haptic);
+      Serial.printf("[pet] purr start level=%u\n", settings().haptic);
     }
   } else if (g == PGEST_TICKLE) {
     // Tickle pre-empts a forming purr. Reset the burst so follow-up slow
@@ -467,9 +468,9 @@ static void cb_on_info_page_change(uint8_t /*p*/)   { /* main loop repaints each
 static void cb_on_hud_scroll_change(uint8_t /*o*/) { /* main loop repaints */ }
 
 static void cb_on_scroll_edge(bool /*cw*/) {
-  // Hard edge "wall bump" — three distinct strong pulses with longer gap
-  // so the user clearly feels the boundary push-back.
-  hw_motor_pulse_series(3, 80, 4);
+  // In FOC mode the spring naturally provides boundary resistance —
+  // no need for extra haptic pulses that would also move the motor
+  // shaft and create false rotation events.
 }
 
 static void cb_on_pet_selector_change(uint8_t idx) {
@@ -490,7 +491,8 @@ void setup() {
   hw_display_init();
   cjk_font_init();
   hw_input_init();
-  hw_motor_init_foc();   // D1: SimpleFOC closed-loop (replaces open-loop hw_motor_init)
+  hw_motor_init_foc();
+  hw_motor_set_haptic(settings().haptic);
   hw_idle_init();
 
   statsLoad();
@@ -604,7 +606,6 @@ void loop() {
         canvas->print("to wake");
       }
       hw_display_flush();
-      hw_motor_tick(now);
       delay(50);
       return;
     }
@@ -702,15 +703,12 @@ void loop() {
     hw_display_set_brightness(10);
   }
 
-  // Fire motor bump only on rotation events. Open-loop pulse with no finger
-  // on the knob (i.e. during CLICK/LONG/DOUBLE) can freely spin the shaft
-  // since there's no hand resistance to absorb the torque.
-  // Rotation bump: only in non-pet modes. In pet mode the gesture classifier
-  // owns motor feedback (purr / kick); adding a generic bump on every detent
-  // drowns out the subtle purr cadence.
+  // In FOC mode the spring provides natural detent feel — no need for
+  // extra motor click per rotation (avoids motor shaft movement being
+  // read back as encoder rotation and creating a feedback loop).
   if (e == EVT_ROT_CW || e == EVT_ROT_CCW) {
     DisplayMode m = input_fsm_view().mode;
-    if (m != DISP_PET) hw_motor_click_default();
+    if (m != DISP_PET && !hw_motor_foc_enabled() && !hw_motor_effect_active()) hw_motor_click_default();
   }
 
   if (inPrompt) {
@@ -875,6 +873,5 @@ void loop() {
     }
   }
 
-  hw_motor_tick(now);   // drive continuous motor patterns
   delay(20);
 }
