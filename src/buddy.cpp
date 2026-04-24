@@ -34,10 +34,6 @@ const uint16_t BUDDY_RED    = 0xF800;
 const uint16_t BUDDY_BLUE   = 0x041F;
 
 // ──────────────── shared rendering helpers ────────────────
-// Render target indirection: defaults to the sprite, but can retarget to
-// M5.Lcd for landscape clock mode (both inherit TFT_eSPI). Coords stay
-// fixed — species hardcode BUDDY_X_CENTER/BUDDY_Y_OVERLAY in their
-// particle calls, so retargeting position would only move the body.
 static Arduino_GFX* _tgt = _canvas;
 // 2× on home screen, 1× in peek (PET/INFO) and landscape clock. Species
 // art is space-padded to a fixed width for alignment at 1×; at 2× we trim
@@ -164,10 +160,7 @@ void buddySetPeek(bool peek) {
   buddyInvalidate();
 }
 
-// One-shot render to an arbitrary TFT_eSPI surface (M5.Lcd for landscape
-// clock). Bypasses tick gating and the sprite fillRect — caller owns
-// clearing. Advances the frame counter so animation runs even when
-// buddyTick is bypassed.
+// One-shot render to an arbitrary canvas surface. Bypasses tick gating
 // Landscape clock callsite — always 1×.
 void buddyRenderTo(Arduino_GFX* canvas, uint8_t personaState, int16_t yOffset) {
   uint8_t prevS = _scale; _scale = 1;

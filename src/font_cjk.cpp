@@ -139,7 +139,7 @@ void cjk_draw_string(int x, int y, const char* utf8_str,
     if (cp == 0) break;
 
     if (cp < 0x80) {
-      // ASCII: use TFT_eSPI built-in font
+      // ASCII: use GFX built-in font
       _cjk_target->setTextColor(color, bg);
       _cjk_target->setTextSize(font_size);
       _cjk_target->setCursor(cursor_x, cursor_y);

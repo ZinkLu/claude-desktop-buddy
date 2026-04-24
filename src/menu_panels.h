@@ -1,8 +1,6 @@
 #pragma once
 
-// Each function paints to the shared hw_display_sprite and pushes it.
-// Called from main.cpp after input_fsm transitions to the corresponding
-// mode, or on invalidate_panel callback.
+// Renders the given menu panel to the display canvas.
 void draw_main_menu();
 void draw_settings();
 void draw_reset();

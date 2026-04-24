@@ -43,8 +43,6 @@ static int         gifX = 0, gifY = 0, gifW = 0, gifH = 0;
 // in the upper 140px. No padding assumed in the source art.
 static const int   PEEK_TOP = 70;
 static bool        peekMode = false;
-// Draw target — defaults to the sprite; characterRenderTo() retargets to
-// M5.Lcd for the landscape clock (both inherit TFT_eSPI).
 static Arduino_GFX* _tgt = _canvas;
 // Peek mode renders at half scale (2:1 nearest-neighbor in gifDrawCb) so
 // the whole pet fits the 70px window instead of cropping the top.

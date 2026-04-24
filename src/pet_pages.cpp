@@ -7,8 +7,8 @@
 // Bridges to main.cpp for stats and mode flags.
 extern bool        buddyMode;            // true=ASCII, false=GIF
 extern uint8_t     pet_mood_tier();      // 0..4
-extern uint8_t     pet_fed_progress();   // 0..10 (unused in current layout)
-extern uint8_t     pet_energy_tier();    // 0..5  (unused)
+extern uint8_t     pet_fed_progress();   // 0..10
+extern uint8_t     pet_energy_tier();    // 0..5
 extern uint8_t     pet_level();
 extern uint16_t    pet_approvals();
 extern uint16_t    pet_denials();

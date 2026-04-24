@@ -9,38 +9,34 @@ static Arduino_GFX *gfx = new Arduino_GC9A01(bus, 9 /* RST */, 2 /* rotation */,
 static Arduino_GFX *canvas = new Arduino_Canvas(240, 240, gfx);
 
 static const int BLK_PIN = 13;  // Shared with MISO
+static const int BLK_CHANNEL = 4;  // LEDC channel 4 (Timer 2) avoids conflict
+                                    // with SimpleFOC's motor phases on channels 0-2
 
 void hw_display_init() {
   Serial.println("[display] init start");
   
-  // Step 1: Initialize GFX first (X-Knob original order)
   gfx->begin();
   Serial.println("[display] gfx begin done");
   
-  // Step 2: Now configure backlight PWM
-  // Use 20kHz to avoid visible flickering
-  ledcSetup(0, 20000, 8);
-  ledcAttachPin(BLK_PIN, 0);
-  ledcWrite(0, 255);  // Full brightness
+  ledcSetup(BLK_CHANNEL, 20000, 8);
+  ledcAttachPin(BLK_PIN, BLK_CHANNEL);
+  ledcWrite(BLK_CHANNEL, 255);
   Serial.println("[display] backlight ON");
   
-  // Initialize canvas (memory framebuffer)
   canvas->begin();
   canvas->fillScreen(BLACK);
   Serial.println("[display] canvas ready");
 }
 
-// Return canvas for drawing (all UI draws to canvas, not directly to screen)
 Arduino_GFX* hw_display_canvas() {
   return canvas;
 }
 
-// Flush canvas to screen atomically (no flicker)
 void hw_display_flush() {
   canvas->flush();
 }
 
 void hw_display_set_brightness(uint8_t percent) {
   if (percent > 100) percent = 100;
-  ledcWrite(0, percent * 255 / 100);
+  ledcWrite(BLK_CHANNEL, percent * 255 / 100);
 }
